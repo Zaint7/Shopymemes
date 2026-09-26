@@ -1,0 +1,47 @@
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+  <div class="container-fluid px-3">
+    <a class="navbar-brand fw-bold fs-4 d-flex align-items-center gap-2" href="index.html">
+      <img src="/bananacat.png" alt="Logo Shopymemes" width="32" height="32">
+      Shopymemes
+    </a>
+
+    <div class="d-flex align-items-center order-lg-2">
+      <button type="button" id="searchToggleBtn" class="icon-btn me-1" aria-label="Buscar">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+      </button>
+
+      <a class="nav-link position-relative cart-link me-3" href="carrito.html" style="color: white;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+          <circle cx="9" cy="21" r="1"></circle>
+          <circle cx="20" cy="21" r="1"></circle>
+          <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+        </svg>
+        <span class="badge bg-white text-dark rounded-pill cart-badge" id="cartCount">0</span>
+      </a>
+
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMenu">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+    </div>
+
+    <div class="collapse navbar-collapse order-lg-1" id="navMenu">
+      <ul class="navbar-nav ms-auto align-items-center gap-2">
+        <li class="nav-item"><a class="nav-link" href="categorias.html">Categorías</a></li>
+        <li class="nav-item"><a class="nav-link" href="ofertas.html">Ofertas</a></li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<!-- Divisor de colores: ahora vive aquí, una sola vez, para todo el sitio -->
+<div class="rainbow-divider"></div>
+
+<!-- Barra de búsqueda: oculta hasta que se pulsa la lupa -->
+<div class="search-dropdown" id="searchDropdown">
+  <form id="searchForm" class="container px-3 py-3" autocomplete="off">
+    <input type="search" id="searchInput" class="search-input" placeholder="Buscar producto...">
+  </form>
+</div>

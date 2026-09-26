@@ -1,0 +1,11 @@
+{
+  "hosting": {
+    "site": "shopymemes",
+    "public": "Public",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ]
+  }
+}

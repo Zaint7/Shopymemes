@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/png" href="/favicon.ico">
+  <title>Ofertas | Shopymemes</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="products.js?v=1"></script>
+  <script src="cart.js"></script>
+  <script src="layout.js"></script>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="d-flex flex-column min-vh-100">
+
+<!-- ============================================= -->
+<!-- NAVBAR: logo, carrito con contador, menú móvil -->
+<!-- ============================================= -->
+<div id="navbar-placeholder" class="sticky-top"></div>
+
+<!-- Divisor decorativo animado, separa bienvenida de productos -->
+
+
+<!-- ======================================================= -->
+<!-- GRID DE PRODUCTOS: filtro (A-Z/precio) + tarjetas dinámicas -->
+<!-- Las tarjetas se generan con JS desde Firestore (products.js). -->
+<!-- Solo se muestran los productos marcados con offer: true.    -->
+<!-- ======================================================= -->
+<section class="container my-5" id="productos">
+  <h2 class="fw-bold mb-4 text-center"> Nuestras Ofertas</h2>
+
+  <div class="mb-3">
+    <div class="dropdown">
+      <button class="btn btn-outline-dark btn-sm dropdown-toggle rounded-pill" type="button" id="filterBtn" data-bs-toggle="dropdown">
+        Filtrar
+      </button>
+      <ul class="dropdown-menu">
+        <li>
+          <a class="dropdown-item d-flex justify-content-between align-items-center" href="#" id="sortAlpha">
+            <span>A - Z</span>
+            <span id="alphaArrow">↓</span>
+          </a>
+        </li>
+        <li><a class="dropdown-item" href="#" data-sort="price-asc">Menor precio</a></li>
+        <li><a class="dropdown-item" href="#" data-sort="price-desc">Mayor precio</a></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="row g-3" id="productGrid"></div>
+</section>
+
+<!-- ============================================= -->
+<!-- FOOTER: se carga dinámicamente desde footer.html -->
+<!-- (compartido entre todas las páginas del sitio)   -->
+<!-- ============================================= -->
+<div id="footer-placeholder" class="mt-auto"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- ============================================= -->
+<!-- SCRIPT: carga del footer + botón volver arriba -->
+<!-- ============================================= -->
+<script>
+  fetch('footer.html')
+    .then(res => res.text())
+    .then(html => {
+      document.getElementById('footer-placeholder').innerHTML = html;
+
+      const backToTopBtn = document.getElementById('backToTop');
+      window.addEventListener('scroll', () => {
+        if (window.scrollY > 300) backToTopBtn.classList.add('show');
+        else backToTopBtn.classList.remove('show');
+      });
+      backToTopBtn.addEventListener('click', () => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    });
+</script>
+
+<!-- ============================================= -->
+<!-- SCRIPT: renderizado y lógica del grid de productos -->
+<!-- Espera a que Firestore termine de cargar (productsReady) -->
+<!-- ============================================= -->
+<script>
+  productsReady.then(() => {
+    const productGrid = document.getElementById('productGrid');
+
+    // Dibuja las tarjetas de producto a partir de una lista dada.
+    // Si stock es 0: sello "Agotado" en la foto y botón desactivado.
+    function renderProducts(list) {
+      productGrid.innerHTML = list.map(p => `
+        <div class="col-6 col-md-3 product-item" data-id="${p.id}" data-name="${p.name}" data-price="${p.price}">
+          <div class="card product-card border-0">
+            <a href="product.html?id=${p.id}" class="position-relative d-block">
+              <img src="${p.image}" class="card-img-top" alt="${p.name}">
+              ${p.stock === 0 ? '<span class="out-of-stock-badge">Agotado</span>' : ''}
+            </a>
+            <div class="card-body px-0">
+              <a href="product.html?id=${p.id}" class="text-decoration-none text-dark">
+                <p class="card-text mb-1 fw-semibold">${p.name}</p>
+              </a>
+              <p class="card-text text-muted mb-2">$${p.price.toLocaleString('es-CO')}</p>
+              <button class="btn btn-dark btn-sm w-100 rounded-pill" data-id="${p.id}" ${p.stock === 0 ? 'disabled' : ''}>
+                ${p.stock === 0 ? 'Agotado' : 'Agregar al carrito'}
+              </button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Página de Ofertas: solo los productos marcados con offer: true
+    const offers = products.filter(p => p.offer);
+    renderProducts(offers);
+
+    if (offers.length === 0) {
+      productGrid.innerHTML = '<div class="col-12 text-center text-muted py-5">Por ahora no hay ofertas. ¡Vuelve pronto!</div>';
+    }
+
+    // --- Filtro: alternar A-Z / Z-A ---
+    const alphaBtn = document.getElementById('sortAlpha');
+    const alphaArrow = document.getElementById('alphaArrow');
+    const filterBtn = document.getElementById('filterBtn');
+    let alphaAscending = true;
+
+    function sortProducts(compareFn) {
+      const items = Array.from(productGrid.querySelectorAll('.product-item'));
+      items.sort(compareFn);
+      items.forEach(item => productGrid.appendChild(item));
+    }
+
+    alphaBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      sortProducts((a, b) => {
+        const nameA = a.dataset.name.toLowerCase();
+        const nameB = b.dataset.name.toLowerCase();
+        return alphaAscending ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+      });
+
+      const label = alphaAscending ? 'A - Z' : 'Z - A';
+      alphaBtn.querySelector('span').textContent = label;
+      alphaArrow.textContent = alphaAscending ? '↓' : '↑';
+      filterBtn.textContent = label;
+      alphaAscending = !alphaAscending;
+    });
+
+    // --- Filtro: ordenar por precio ---
+    document.querySelectorAll('[data-sort^="price"]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const order = btn.dataset.sort;
+        sortProducts((a, b) => {
+          const priceA = parseInt(a.dataset.price);
+          const priceB = parseInt(b.dataset.price);
+          return order === 'price-asc' ? priceA - priceB : priceB - priceA;
+        });
+        filterBtn.textContent = btn.textContent;
+      });
+    });
+
+    // --- Agregar al carrito ---
+    productGrid.addEventListener('click', (e) => {
+      if (e.target.matches('button[data-id]')) {
+        addToCart(parseInt(e.target.dataset.id));
+      }
+    });
+  });
+</script>
+
+</body>
+</html>
