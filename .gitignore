@@ -1,0 +1,27 @@
+# Secretos
+.env
+*serviceAccountKey*.json
+*-firebase-adminsdk-*.json
+
+# Base de datos local
+*.db
+*.sqlite
+*.sqlite3
+
+# Dependencias
+node_modules/
+
+# Firebase caché y logs
+.firebase/
+firebase-debug.log
+firestore-debug.log
+*.log
+
+# Imágenes subidas en local (ajusta el nombre a tu carpeta)
+uploads/
+skills-lock.json
+.agents/
+SKILL.md
+configuration-migration.md
+estructuring-shim.md
+migrate-to-firestore.js
