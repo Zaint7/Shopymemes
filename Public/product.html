@@ -84,6 +84,26 @@
 
     const container = document.getElementById('productDetail');
 
+    // Precio de las tarjetas: si el producto tiene "precio anterior" mayor al actual,
+    // se muestra tachado al lado del precio nuevo (se llena desde el admin)
+    function priceHtml(p) {
+      const money = n => '$' + n.toLocaleString('es-CO');
+      if (p.oldPrice && p.oldPrice > p.price) {
+        return `<p class="card-text mb-2"><span class="fw-semibold text-dark">${money(p.price)}</span> <span class="text-muted text-decoration-line-through small ms-1">${money(p.oldPrice)}</span></p>`;
+      }
+      return `<p class="card-text text-muted mb-2">${money(p.price)}</p>`;
+    }
+
+    // Precio del detalle: con "precio anterior" mayor, se muestra tachado y con el % de descuento
+    function detailPriceHtml(p) {
+      const money = n => '$' + n.toLocaleString('es-CO');
+      if (p.oldPrice && p.oldPrice > p.price) {
+        const pct = Math.round((1 - p.price / p.oldPrice) * 100);
+        return `${money(p.price)} <span class="fs-6 fw-normal text-muted text-decoration-line-through ms-2">${money(p.oldPrice)}</span> <span class="badge bg-success ms-1 align-middle">-${pct}%</span>`;
+      }
+      return money(p.price);
+    }
+
     // Genera hasta 4 tarjetas de productos distintos al actual.
     // Si stock es 0: sello "Agotado" en la foto y botón desactivado.
     function renderSimilarProducts() {
@@ -104,7 +124,7 @@
                   <a href="product.html?id=${p.id}" class="text-decoration-none text-dark">
                     <p class="card-text mb-1 fw-semibold">${p.name}</p>
                   </a>
-                  <p class="card-text text-muted mb-2">$${p.price.toLocaleString('es-CO')}</p>
+                  ${priceHtml(p)}
                   <button class="btn btn-dark btn-sm w-100 rounded-pill similar-add-btn" data-id="${p.id}" ${p.stock === 0 ? 'disabled' : ''}>
                     ${p.stock === 0 ? 'Agotado' : 'Agregar al carrito'}
                   </button>
@@ -139,7 +159,7 @@
       ${product.category}
     </a>
     <h1 class="fw-bold mb-2 mt-2">${product.name}</h1>
-            <p class="fs-4 fw-semibold mb-3">$${product.price.toLocaleString('es-CO')}</p>
+            <p class="fs-4 fw-semibold mb-3">${detailPriceHtml(product)}</p>
             <p class="${outOfStock ? 'text-danger fw-semibold' : 'text-muted'} mb-3">
               ${outOfStock ? 'Agotado' : `${product.stock} disponibles`}
             </p>

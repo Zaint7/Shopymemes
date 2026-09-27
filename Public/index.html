@@ -99,6 +99,16 @@
   productsReady.then(() => {
     const productGrid = document.getElementById('productGrid');
 
+    // Precio de la tarjeta: si el producto tiene "precio anterior" mayor al actual,
+    // se muestra tachado al lado del precio nuevo (se llena desde el admin)
+    function priceHtml(p) {
+      const money = n => '$' + n.toLocaleString('es-CO');
+      if (p.oldPrice && p.oldPrice > p.price) {
+        return `<p class="card-text mb-2"><span class="fw-semibold text-dark">${money(p.price)}</span> <span class="text-muted text-decoration-line-through small ms-1">${money(p.oldPrice)}</span></p>`;
+      }
+      return `<p class="card-text text-muted mb-2">${money(p.price)}</p>`;
+    }
+
     // Dibuja las tarjetas de producto a partir de una lista dada.
     // Si stock es 0: sello "Agotado" en la foto y botón desactivado.
     function renderProducts(list) {
@@ -113,7 +123,7 @@
               <a href="product.html?id=${p.id}" class="text-decoration-none text-dark">
                 <p class="card-text mb-1 fw-semibold">${p.name}</p>
               </a>
-              <p class="card-text text-muted mb-2">$${p.price.toLocaleString('es-CO')}</p>
+              ${priceHtml(p)}
               <button class="btn btn-dark btn-sm w-100 rounded-pill" data-id="${p.id}" ${p.stock === 0 ? 'disabled' : ''}>
                 ${p.stock === 0 ? 'Agotado' : 'Agregar al carrito'}
               </button>
