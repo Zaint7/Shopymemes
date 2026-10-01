@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Admin | Shopymemes</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" type="image/png" href="/favicon.ico">
+  <script src="shared.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
@@ -505,6 +508,25 @@
     }
     .modal-actions .btn { flex: 1; }
 
+    .field-hint {
+      display: flex;
+      justify-content: flex-end;
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+    .field-hint.is-full { color: var(--red); font-weight: 600; }
+
+    .product-name, .category-card-name { overflow-wrap: anywhere; }
+
+    .visually-hidden {
+      position: absolute !important;
+      width: 1px; height: 1px;
+      padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0, 0, 0, 0);
+      white-space: nowrap; border: 0;
+    }
+
     @media (max-width: 480px) {
       .field-row { flex-direction: column; gap: 0; }
       .admin-toolbar { padding: 20px 16px 0; }
@@ -523,10 +545,12 @@
     <h1>Panel Shopymemes</h1>
     <p>Entra con tu cuenta de administrador</p>
     <form id="loginForm">
-      <input type="email" id="emailInput" class="field" placeholder="Correo" required autofocus style="margin-bottom:10px;">
-      <input type="password" id="passwordInput" class="field" placeholder="Contraseña" required>
+      <label for="emailInput" class="visually-hidden">Correo</label>
+      <input type="email" id="emailInput" class="field" placeholder="Correo" required autofocus autocomplete="username" data-limit="email" style="margin-bottom:10px;">
+      <label for="passwordInput" class="visually-hidden">Contraseña</label>
+      <input type="password" id="passwordInput" class="field" placeholder="Contraseña" required autocomplete="current-password" data-limit="password">
       <button type="submit" class="btn btn-dark btn-block">Entrar</button>
-      <p id="loginError" class="error-text" style="display:none;">Correo o contraseña incorrectos</p>
+      <p id="loginError" class="error-text" role="alert" style="display:none;">Correo o contraseña incorrectos</p>
     </form>
   </div>
 </section>
@@ -548,8 +572,8 @@
 
   <div class="admin-toolbar" style="padding-bottom:16px;">
     <div class="toolbar-actions">
-      <button class="btn btn-dark" id="tabProductsBtn">Productos</button>
-      <button class="btn btn-ghost" id="tabCategoriesBtn">Categorías</button>
+      <button type="button" class="btn btn-dark" id="tabProductsBtn" aria-pressed="true">Productos</button>
+      <button type="button" class="btn btn-ghost" id="tabCategoriesBtn" aria-pressed="false">Categorías</button>
     </div>
   </div>
 
@@ -557,7 +581,8 @@
     <div class="admin-toolbar" style="padding-top:0;">
       <h2>Productos <span class="count" id="productCount"></span></h2>
       <div class="toolbar-actions">
-        <input type="text" id="searchInput" class="field search-field" placeholder="Buscar por nombre o categoría">
+        <label for="searchInput" class="visually-hidden">Buscar productos</label>
+        <input type="search" id="searchInput" class="field search-field" placeholder="Buscar por nombre o categoría" data-limit="searchQuery">
         <button id="newProductBtn" class="btn btn-dark">+ Nuevo producto</button>
       </div>
     </div>
@@ -583,63 +608,65 @@
 <!-- FORMULARIO: crear / editar                     -->
 <!-- ============================================= -->
 <div class="modal-backdrop-x" id="modalBackdrop">
-  <div class="modal-card">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <h2 id="modalTitle">Nuevo producto</h2>
     <form id="productForm">
       <input type="hidden" id="productId">
 
       <div class="field-group">
         <label for="fieldName">Nombre</label>
-        <input type="text" id="fieldName" class="field" required>
+        <input type="text" id="fieldName" class="field" required data-limit="productName" data-counter>
       </div>
 
       <div class="field-row">
         <div class="field-group">
           <label for="fieldPrice">Precio</label>
-          <input type="number" id="fieldPrice" class="field" min="1" required>
+          <input type="number" id="fieldPrice" class="field" min="1" step="1" required data-max="maxPrice">
         </div>
         <div class="field-group">
           <label for="fieldOldPrice">Precio anterior</label>
-          <input type="number" id="fieldOldPrice" class="field" min="1" placeholder="Opcional">
+          <input type="number" id="fieldOldPrice" class="field" min="1" step="1" placeholder="Opcional" data-max="maxPrice">
         </div>
       </div>
 
       <div class="field-row">
         <div class="field-group">
           <label for="fieldCategory">Categoría</label>
-          <input type="text" id="fieldCategory" class="field" placeholder="mugs, almohadas, llaveros...">
+          <input type="text" id="fieldCategory" class="field" placeholder="mugs, almohadas, llaveros..." list="categoryOptions" data-limit="categorySlug" aria-describedby="fieldCategoryHelp">
+          <datalist id="categoryOptions"></datalist>
+          <span id="fieldCategoryHelp" class="visually-hidden">Se guarda en minúsculas y con guiones en lugar de espacios</span>
         </div>
         <div class="field-group">
           <label for="fieldStock">Cantidad disponible</label>
-          <input type="number" id="fieldStock" class="field" min="0" step="1" value="0" required>
+          <input type="number" id="fieldStock" class="field" min="0" step="1" value="0" required data-max="maxStock">
         </div>
       </div>
 
       <div class="field-group">
-        <label>Imágenes <span style="font-weight:400;color:var(--muted);">(la primera es la principal, hasta 6)</span></label>
+        <label for="fieldImage">Imágenes <span style="font-weight:400;color:var(--muted);">(la primera es la principal, hasta 6)</span></label>
         <div class="gallery-edit" id="galleryEdit"></div>
         <div style="display:flex;gap:8px;margin-bottom:8px;">
-          <input type="text" id="fieldImage" class="field" placeholder="Pega un link de imagen (opcional)">
+          <input type="url" id="fieldImage" class="field" placeholder="Pega un link https de imagen (opcional)" data-limit="imageUrl">
           <button type="button" class="btn btn-ghost" id="addImageUrlBtn" style="padding:10px 16px;">Añadir</button>
         </div>
-        <input type="file" id="fieldImageFile" accept="image/*" multiple class="field">
-        <p class="upload-status" id="uploadStatus"></p>
+        <input type="file" id="fieldImageFile" accept="image/*" multiple class="field" aria-label="Subir imágenes desde el computador">
+        <p class="upload-status" id="uploadStatus" role="status"></p>
       </div>
 
       <div class="field-group">
         <label for="fieldDescription">Descripción</label>
-        <textarea id="fieldDescription" class="field"></textarea>
+        <textarea id="fieldDescription" class="field" rows="4" data-limit="productDescription" data-counter></textarea>
       </div>
 
       <div class="offer-check-row">
         <label class="switch">
-          <input type="checkbox" id="fieldOffer">
+          <input type="checkbox" id="fieldOffer" aria-labelledby="fieldOfferLabel">
           <span class="switch-track"></span>
         </label>
-        <span>Marcar como oferta</span>
+        <span id="fieldOfferLabel">Marcar como oferta</span>
       </div>
 
-      <p id="formError" class="error-text" style="display:none;"></p>
+      <p id="formError" class="error-text" role="alert" style="display:none;"></p>
 
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="cancelModalBtn">Cancelar</button>
@@ -653,30 +680,30 @@
 <!-- FORMULARIO: nueva / editar categoría           -->
 <!-- ============================================= -->
 <div class="modal-backdrop-x" id="categoryModalBackdrop">
-  <div class="modal-card">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="categoryModalTitle">
     <h2 id="categoryModalTitle">Nueva categoría</h2>
     <form id="categoryForm">
       <input type="hidden" id="categorySlugOriginal">
 
       <div class="field-group" id="categorySlugGroup">
         <label for="fieldCategorySlug">Identificador (slug)</label>
-        <input type="text" id="fieldCategorySlug" class="field" placeholder="ej: ropa">
+        <input type="text" id="fieldCategorySlug" class="field" placeholder="ej: ropa" data-limit="categorySlug" data-counter>
       </div>
 
       <div class="field-group">
         <label for="fieldCategoryName">Nombre a mostrar</label>
-        <input type="text" id="fieldCategoryName" class="field" placeholder="ej: Ropa" required>
+        <input type="text" id="fieldCategoryName" class="field" placeholder="ej: Ropa" required data-limit="categoryName" data-counter>
       </div>
 
       <div class="field-group">
         <label for="fieldCategoryImage">Imagen</label>
-        <input type="text" id="fieldCategoryImage" class="field" placeholder="Pega un link, o sube un archivo abajo" style="margin-bottom:8px;">
-        <input type="file" id="fieldCategoryImageFile" accept="image/*" class="field">
-        <p class="upload-status" id="categoryUploadStatus"></p>
+        <input type="url" id="fieldCategoryImage" class="field" placeholder="Pega un link https, o sube un archivo abajo" data-limit="imageUrl" style="margin-bottom:8px;">
+        <input type="file" id="fieldCategoryImageFile" accept="image/*" class="field" aria-label="Subir imagen desde el computador">
+        <p class="upload-status" id="categoryUploadStatus" role="status"></p>
         <img id="categoryImagePreview" class="image-preview" alt="Vista previa">
       </div>
 
-      <p id="categoryFormError" class="error-text" style="display:none;"></p>
+      <p id="categoryFormError" class="error-text" role="alert" style="display:none;"></p>
 
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="cancelCategoryModalBtn">Cancelar</button>
@@ -707,6 +734,30 @@
   const db = getFirestore(firebaseApp);
 
   const PLACEHOLDER_IMG = 'https://placehold.co/400x400';
+
+  // ---------- Límites de los campos (LIMITS viene de shared.js; firestore.rules usa los mismos) ----------
+  // data-limit="clave" -> maxlength; data-max="clave" -> max; data-counter -> contador "12 / 80"
+  document.querySelectorAll('[data-limit]').forEach(el => { el.maxLength = LIMITS[el.dataset.limit]; });
+  document.querySelectorAll('[data-max]').forEach(el => { el.max = LIMITS[el.dataset.max]; });
+
+  const counters = [];
+  document.querySelectorAll('[data-counter]').forEach(el => {
+    const hint = document.createElement('span');
+    hint.className = 'field-hint';
+    hint.id = `${el.id}Count`;
+    hint.setAttribute('aria-live', 'polite');
+    el.after(hint);
+    el.setAttribute('aria-describedby', hint.id);
+    const update = () => {
+      hint.textContent = `${el.value.length} / ${el.maxLength}`;
+      hint.classList.toggle('is-full', el.value.length >= el.maxLength);
+    };
+    el.addEventListener('input', update);
+    counters.push(update);
+    update();
+  });
+  // Al llenar un formulario con datos guardados, los contadores se actualizan
+  const refreshCounters = () => counters.forEach(update => update());
 
   const loginView = document.getElementById('loginView');
   const panelView = document.getElementById('panelView');
@@ -774,15 +825,15 @@
   // ---------- Cuadrícula de productos ----------
   function renderCard(p) {
     return `
-      <div class="product-card" data-id="${p.id}">
+      <div class="product-card" data-id="${escapeHtml(p.id)}">
         <div class="product-thumb">
-          <img src="${p.image}" alt="${p.name}">
+          <img src="${escapeHtml(p.image)}" alt="" loading="lazy">
           ${p.offer ? '<span class="offer-pill">Oferta</span>' : ''}
           ${p.stock === 0 ? '<span class="stock-pill">Agotado</span>' : ''}
         </div>
         <div class="product-body">
-          <span class="category-pill" style="background:${categoryColor(p.category)}">${p.category}</span>
-          <p class="product-name">${p.name}</p>
+          <span class="category-pill" style="background:${categoryColor(p.category)}">${escapeHtml(p.category)}</span>
+          <p class="product-name">${escapeHtml(p.name)}</p>
           <div class="price-row">
             <span class="price">${formatPrice(p.price)}</span>
             ${p.oldPrice ? `<span class="price-old">${formatPrice(p.oldPrice)}</span>` : ''}
@@ -794,14 +845,14 @@
           <div class="offer-toggle-row">
             <span class="offer-toggle-label">En oferta</span>
             <label class="switch">
-              <input type="checkbox" class="offer-switch" ${p.offer ? 'checked' : ''}>
+              <input type="checkbox" class="offer-switch" ${p.offer ? 'checked' : ''} aria-label="${escapeHtml(p.name)} en oferta">
               <span class="switch-track"></span>
             </label>
           </div>
 
           <div class="card-actions">
-            <button class="btn btn-ghost edit-btn">Editar</button>
-            <button class="btn btn-danger-ghost delete-btn">Borrar</button>
+            <button type="button" class="btn btn-ghost edit-btn" aria-label="Editar ${escapeHtml(p.name)}">Editar</button>
+            <button type="button" class="btn btn-danger-ghost delete-btn" aria-label="Borrar ${escapeHtml(p.name)}">Borrar</button>
           </div>
         </div>
       </div>
@@ -891,24 +942,42 @@
     return data.secure_url;
   }
 
+  // ---------- Ventanas modales: foco y tecla Escape ----------
+  // Al abrir se enfoca el primer campo; al cerrar, el foco vuelve al botón que la abrió.
+  let lastFocused = null;
+  function openDialog(backdrop, focusId) {
+    lastFocused = document.activeElement;
+    backdrop.classList.add('open');
+    document.getElementById(focusId)?.focus();
+  }
+  function closeDialog(backdrop) {
+    backdrop.classList.remove('open');
+    if (lastFocused?.isConnected) lastFocused.focus();
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const open = document.querySelector('.modal-backdrop-x.open');
+    if (open) closeDialog(open);
+  });
+
   // ---------- Formulario (crear / editar) ----------
   const modalBackdrop = document.getElementById('modalBackdrop');
   const formError = document.getElementById('formError');
 
   // ---------- Galería de imágenes del producto ----------
   // currentImages es la lista que se está editando; la primera es la principal.
-  const MAX_IMAGES = 6;
+  const MAX_IMAGES = LIMITS.maxImages;
   const galleryEdit = document.getElementById('galleryEdit');
   let currentImages = [];
 
   function renderGallery() {
     galleryEdit.innerHTML = currentImages.map((src, i) => `
       <div class="gallery-item ${i === 0 ? 'is-main' : ''}" data-index="${i}">
-        <img src="${src}" alt="Imagen ${i + 1}">
+        <img src="${escapeHtml(src)}" alt="Imagen ${i + 1}">
         ${i === 0
           ? '<span class="badge-main">Principal</span>'
-          : '<button type="button" class="g-btn g-main" title="Hacer principal">★</button>'}
-        <button type="button" class="g-btn g-remove" title="Quitar">✕</button>
+          : `<button type="button" class="g-btn g-main" title="Hacer principal" aria-label="Hacer principal la imagen ${i + 1}">★</button>`}
+        <button type="button" class="g-btn g-remove" title="Quitar" aria-label="Quitar imagen ${i + 1}">✕</button>
       </div>
     `).join('');
   }
@@ -955,11 +1024,12 @@
     document.getElementById('uploadStatus').textContent = '';
     document.getElementById('uploadStatus').classList.remove('is-error');
     renderGallery();
-    modalBackdrop.classList.add('open');
+    refreshCounters();
+    openDialog(modalBackdrop, 'fieldName');
   }
 
   function closeModal() {
-    modalBackdrop.classList.remove('open');
+    closeDialog(modalBackdrop);
   }
 
   document.getElementById('newProductBtn').addEventListener('click', () => openModal(null));
@@ -973,7 +1043,19 @@
     const input = document.getElementById('fieldImage');
     const src = input.value.trim();
     if (!src) return;
-    addImage(src);
+    const statusEl = document.getElementById('uploadStatus');
+    if (!isValidImageUrl(src)) {
+      statusEl.textContent = `El link debe empezar por https:// y tener máximo ${LIMITS.imageUrl} caracteres`;
+      statusEl.classList.add('is-error');
+      return;
+    }
+    if (!addImage(src)) {
+      statusEl.textContent = `Máximo ${MAX_IMAGES} imágenes por producto`;
+      statusEl.classList.add('is-error');
+      return;
+    }
+    statusEl.textContent = '';
+    statusEl.classList.remove('is-error');
     input.value = '';
   }
   document.getElementById('addImageUrlBtn').addEventListener('click', addImageFromUrl);
@@ -1026,37 +1108,22 @@
     categoriesCache.push(category);
   }
 
-  // Valida lo que escribió el usuario (antes lo hacía el servidor)
+  // Valida lo que escribió el usuario con las mismas reglas que firestore.rules (validateProduct, de shared.js)
   function cleanProduct() {
-    const name = document.getElementById('fieldName').value.trim();
-    const price = Number(document.getElementById('fieldPrice').value);
-    const oldPriceRaw = document.getElementById('fieldOldPrice').value;
-    const oldPrice = oldPriceRaw === '' ? null : Number(oldPriceRaw);
-    const stockRaw = document.getElementById('fieldStock').value;
-    const stock = stockRaw === '' ? 0 : Number(stockRaw);
-
-    if (!name) return { error: 'El nombre es obligatorio' };
-    if (!Number.isInteger(price) || price <= 0) return { error: 'El precio debe ser un número entero mayor a 0' };
-    if (oldPrice !== null && (!Number.isInteger(oldPrice) || oldPrice <= 0)) {
-      return { error: 'El precio anterior debe ser un número entero mayor a 0' };
-    }
-    if (!Number.isInteger(stock) || stock < 0) {
-      return { error: 'La cantidad disponible debe ser un número entero mayor o igual a 0' };
-    }
-
-    return {
-      product: {
-        name,
-        price,
-        oldPrice,
-        image: currentImages[0] || PLACEHOLDER_IMG, // la principal: la usan las tarjetas y el carrito
-        images: [...currentImages],
-        description: document.getElementById('fieldDescription').value.trim(),
-        category: document.getElementById('fieldCategory').value.trim().toLowerCase() || 'otros',
-        offer: document.getElementById('fieldOffer').checked,
-        stock
-      }
-    };
+    const result = validateProduct({
+      name: document.getElementById('fieldName').value,
+      price: document.getElementById('fieldPrice').value,
+      oldPrice: document.getElementById('fieldOldPrice').value,
+      stock: document.getElementById('fieldStock').value,
+      description: document.getElementById('fieldDescription').value,
+      category: document.getElementById('fieldCategory').value,
+      offer: document.getElementById('fieldOffer').checked,
+      images: currentImages
+    });
+    if (result.error) return result;
+    // La principal: la usan las tarjetas y el carrito
+    result.product.image = currentImages[0] || PLACEHOLDER_IMG;
+    return result;
   }
 
   document.getElementById('productForm').addEventListener('submit', async (e) => {
@@ -1097,6 +1164,8 @@
   tabProductsBtn.addEventListener('click', () => {
     tabProductsBtn.className = 'btn btn-dark';
     tabCategoriesBtn.className = 'btn btn-ghost';
+    tabProductsBtn.setAttribute('aria-pressed', 'true');
+    tabCategoriesBtn.setAttribute('aria-pressed', 'false');
     productsView.style.display = 'block';
     categoriesView.style.display = 'none';
   });
@@ -1104,6 +1173,8 @@
   tabCategoriesBtn.addEventListener('click', () => {
     tabCategoriesBtn.className = 'btn btn-dark';
     tabProductsBtn.className = 'btn btn-ghost';
+    tabCategoriesBtn.setAttribute('aria-pressed', 'true');
+    tabProductsBtn.setAttribute('aria-pressed', 'false');
     categoriesView.style.display = 'block';
     productsView.style.display = 'none';
     loadCategories();
@@ -1116,16 +1187,16 @@
 
   function renderCategoryCard(c) {
     return `
-      <div class="product-card" data-slug="${c.slug}">
+      <div class="product-card" data-slug="${escapeHtml(c.slug)}">
         <div class="product-thumb">
-          <img src="${c.image}" alt="${c.name}">
+          <img src="${escapeHtml(c.image)}" alt="" loading="lazy">
         </div>
         <div class="product-body">
-          <p class="category-card-name">${c.name}</p>
-          <p class="category-card-slug">/${c.slug}</p>
+          <p class="category-card-name">${escapeHtml(c.name)}</p>
+          <p class="category-card-slug">/${escapeHtml(c.slug)}</p>
           <div class="card-actions">
-            <button class="btn btn-ghost edit-category-btn">Editar</button>
-            <button class="btn btn-danger-ghost delete-category-btn">Borrar</button>
+            <button type="button" class="btn btn-ghost edit-category-btn" aria-label="Editar ${escapeHtml(c.name)}">Editar</button>
+            <button type="button" class="btn btn-danger-ghost delete-category-btn" aria-label="Borrar ${escapeHtml(c.name)}">Borrar</button>
           </div>
         </div>
       </div>
@@ -1134,6 +1205,8 @@
 
   function renderCategories() {
     categoryCount.textContent = `(${categoriesCache.length})`;
+    document.getElementById('categoryOptions').innerHTML = categoriesCache
+      .map(c => `<option value="${escapeHtml(c.slug)}">${escapeHtml(c.name)}</option>`).join('');
     categoriesGrid.innerHTML = categoriesCache.map(renderCategoryCard).join('');
     categoriesEmptyState.style.display = categoriesCache.length === 0 ? 'block' : 'none';
   }
@@ -1171,7 +1244,7 @@
   function updateCategoryImagePreview() {
     const src = document.getElementById('fieldCategoryImage').value.trim();
     const preview = document.getElementById('categoryImagePreview');
-    if (src) {
+    if (src && isValidImageUrl(src)) {
       preview.src = src;
       preview.style.display = 'inline-block';
     } else {
@@ -1192,11 +1265,12 @@
     // El slug solo se elige al crear: cambiarlo después rompería los productos que ya lo usan
     categorySlugGroup.style.display = category ? 'none' : 'block';
     updateCategoryImagePreview();
-    categoryModalBackdrop.classList.add('open');
+    refreshCounters();
+    openDialog(categoryModalBackdrop, category ? 'fieldCategoryName' : 'fieldCategorySlug');
   }
 
   function closeCategoryModal() {
-    categoryModalBackdrop.classList.remove('open');
+    closeDialog(categoryModalBackdrop);
   }
 
   document.getElementById('newCategoryBtn').addEventListener('click', () => openCategoryModal(null));
@@ -1212,9 +1286,11 @@
   document.getElementById('fieldCategorySlug').addEventListener('input', (e) => {
     const cursorAtEnd = e.target.selectionEnd === e.target.value.length;
     const formatted = e.target.value
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // "café" -> "cafe"
       .toLowerCase()
       .replace(/\s+/g, '-')
-      .replace(/[^a-z0-9-]/g, '');
+      .replace(/[^a-z0-9-]/g, '')
+      .slice(0, LIMITS.categorySlug);
     e.target.value = formatted;
     if (cursorAtEnd) e.target.setSelectionRange(formatted.length, formatted.length);
   });
@@ -1241,24 +1317,27 @@
     e.preventDefault();
 
     const originalSlug = document.getElementById('categorySlugOriginal').value;
-    const name = document.getElementById('fieldCategoryName').value.trim();
-    const image = document.getElementById('fieldCategoryImage').value.trim() || PLACEHOLDER_IMG;
 
     function showError(text) {
       categoryFormError.textContent = text;
       categoryFormError.style.display = 'block';
     }
 
-    if (!name) return showError('El nombre es obligatorio');
+    // Mismas reglas que firestore.rules (validateCategory, de shared.js)
+    const { category, error } = validateCategory({
+      slug: document.getElementById('fieldCategorySlug').value,
+      name: document.getElementById('fieldCategoryName').value,
+      image: document.getElementById('fieldCategoryImage').value
+    }, { isNew: !originalSlug });
+    if (error) return showError(error);
+    const { name } = category;
+    const image = category.image || PLACEHOLDER_IMG;
 
     try {
       if (originalSlug) {
         await updateDoc(doc(db, 'categories', originalSlug), { name, image });
       } else {
-        const slug = document.getElementById('fieldCategorySlug').value.trim().toLowerCase();
-        if (!/^[a-z0-9-]+$/.test(slug)) {
-          return showError('El identificador solo puede tener letras minúsculas, números y guiones (ej: ropa-deportiva)');
-        }
+        const slug = category.slug;
         if (categoriesCache.some(c => c.slug === slug)) {
           return showError('Ya existe una categoría con ese identificador');
         }

@@ -1,16 +1,37 @@
 // =============================================
 // CARRITO compartido por todas las páginas.
-// Guarda solo { id, qty } en localStorage; nombre, precio e imagen se leen de products.js.
+// Guarda solo { id, qty } en localStorage; nombre, precio, imagen y stock se leen de products.js.
+// Requiere shared.js cargado antes (LIMITS, maxQtyFor).
 // También incluye la animación de "añadido al carrito" (al final del archivo).
 // =============================================
 const CART_KEY = 'shopymemes_cart';
 
+// Lo guardado en localStorage puede estar dañado o editado a mano: solo se aceptan
+// líneas { id entero, qty entero entre 1 y el máximo }, sin ids repetidos.
 function getCart() {
+  let raw;
   try {
-    return JSON.parse(localStorage.getItem(CART_KEY)) || [];
+    raw = JSON.parse(localStorage.getItem(CART_KEY));
   } catch (e) {
     return [];
   }
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set();
+  return raw
+    .filter(item => item && Number.isInteger(item.id) && Number.isInteger(item.qty) && item.qty > 0)
+    .filter(item => !seen.has(item.id) && seen.add(item.id))
+    .map(item => ({ id: item.id, qty: Math.min(item.qty, LIMITS.maxCartQty) }));
+}
+
+// Producto cargado desde Firestore (products.js), o null si esta página no lo cargó
+function findLoadedProduct(productId) {
+  return typeof products !== 'undefined' ? products.find(p => p.id === productId) || null : null;
+}
+
+// Cuántas unidades se pueden tener en el carrito; si la página no cargó productos, solo el tope general
+function cartLimitFor(productId) {
+  const product = findLoadedProduct(productId);
+  return product ? maxQtyFor(product) : LIMITS.maxCartQty;
 }
 
 // deferBadge: true cuando una animación va a actualizar el número cuando "aterrice".
@@ -20,9 +41,18 @@ function saveCart(cart, { deferBadge = false } = {}) {
   if (!deferBadge) updateCartBadge();
 }
 
+// Devuelve true si se agregó; false si ya se alcanzó el stock disponible
 function addToCart(productId) {
   const cart = getCart();
   const item = cart.find(i => i.id === productId);
+  const btn = takeClickedAddButton();
+
+  if ((item ? item.qty : 0) + 1 > cartLimitFor(productId)) {
+    if (btn) showButtonMessage(btn, 'Sin más stock', 'btn-limit');
+    else showCartToast('No hay más unidades disponibles de este producto');
+    return false;
+  }
+
   if (item) {
     item.qty += 1;
   } else {
@@ -30,9 +60,9 @@ function addToCart(productId) {
   }
 
   // Si el clic vino de un botón "Agregar al carrito", se anima; si no, se actualiza normal
-  const btn = takeClickedAddButton();
   saveCart(cart, { deferBadge: !!btn });
   if (btn) playAddAnimation(btn);
+  return true;
 }
 
 function getCartCount() {
@@ -48,12 +78,34 @@ function updateCartBadge() {
 window.addEventListener('storage', updateCartBadge);
 
 // Cambia la cantidad de un producto (delta = +1 o -1). Si llega a 0, se quita.
+// No deja pasar del stock disponible; devuelve false si no se pudo cambiar.
 function changeQty(productId, delta) {
   const cart = getCart();
   const item = cart.find(i => i.id === productId);
-  if (!item) return;
+  if (!item) return false;
+  if (delta > 0 && item.qty + delta > cartLimitFor(productId)) return false;
   item.qty += delta;
   saveCart(cart.filter(i => i.qty > 0));
+  return true;
+}
+
+// Ajusta el carrito al stock actual (p. ej. si el admin bajó el stock después de agregar)
+// y quita productos que ya no existen. Devuelve los nombres de los productos ajustados.
+function syncCartWithStock() {
+  if (typeof products === 'undefined') return [];
+  const adjusted = [];
+  const cart = [];
+  const current = getCart();
+  for (const item of current) {
+    const product = findLoadedProduct(item.id);
+    if (!product) continue;
+    const max = maxQtyFor(product);
+    if (item.qty > max) adjusted.push(product.name);
+    if (Math.min(item.qty, max) > 0) cart.push({ id: item.id, qty: Math.min(item.qty, max) });
+  }
+  // Solo guarda si algo cambió (evita disparar "storage" en otras pestañas sin motivo)
+  if (JSON.stringify(cart) !== JSON.stringify(current)) saveCart(cart);
+  return adjusted;
 }
 
 // Quita un producto completo del carrito
@@ -114,6 +166,28 @@ function takeClickedAddButton() {
       border-color: #198754 !important;
       color: #fff !important;
     }
+    .btn-limit {
+      background-color: #6c757d !important;
+      border-color: #6c757d !important;
+      color: #fff !important;
+    }
+    .cart-toast {
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      transform: translate(-50%, 20px);
+      max-width: calc(100% - 32px);
+      background: #1a1a1a;
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: 999px;
+      font-size: 0.9rem;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      z-index: 2001;
+    }
+    .cart-toast.show { opacity: 1; transform: translate(-50%, 0); }
 
     /* Se usan las propiedades "scale" y "rotate" (no "transform") para no pisar
        ningún transform que el navbar ya tenga puesto */
@@ -160,23 +234,59 @@ function bumpCart() {
   restartAnimation(icon, 'cart-shake');
 }
 
-// El botón dice "✓ Añadido" y se pone verde ~1.3 s; si se pulsa de nuevo, el tiempo se reinicia
-function showButtonAdded(btn) {
+// El botón muestra un mensaje (p. ej. "✓ Añadido" en verde) ~1.3 s; si se pulsa de nuevo, el tiempo se reinicia
+function showButtonMessage(btn, text, className) {
   if (btn.dataset.addedTimer) {
     clearTimeout(Number(btn.dataset.addedTimer));
+    btn.classList.remove('btn-added', 'btn-limit');
   } else {
     btn.dataset.originalHtml = btn.innerHTML;
     btn.style.minWidth = btn.offsetWidth + 'px'; // evita que el botón cambie de tamaño
-    btn.classList.add('btn-added');
-    btn.innerHTML = '✓ Añadido';
   }
+  btn.classList.add(className);
+  btn.textContent = text;
+  announce(text);
   btn.dataset.addedTimer = String(setTimeout(() => {
     btn.innerHTML = btn.dataset.originalHtml;
     btn.style.minWidth = '';
-    btn.classList.remove('btn-added');
+    btn.classList.remove('btn-added', 'btn-limit');
     delete btn.dataset.addedTimer;
     delete btn.dataset.originalHtml;
   }, 1300));
+}
+
+function showButtonAdded(btn) {
+  showButtonMessage(btn, '✓ Añadido', 'btn-added');
+}
+
+// Región invisible que los lectores de pantalla leen en voz alta
+function announce(text) {
+  let region = document.getElementById('cart-live-region');
+  if (!region) {
+    region = document.createElement('div');
+    region.id = 'cart-live-region';
+    region.className = 'visually-hidden';
+    region.setAttribute('aria-live', 'polite');
+    document.body.appendChild(region);
+  }
+  region.textContent = '';
+  setTimeout(() => { region.textContent = text; }, 50);
+}
+
+// Aviso flotante breve (cuando no hay un botón donde mostrar el mensaje)
+function showCartToast(text) {
+  let toast = document.getElementById('cart-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'cart-toast';
+    toast.className = 'cart-toast';
+    toast.setAttribute('role', 'status');
+    document.body.appendChild(toast);
+  }
+  toast.textContent = text;
+  toast.classList.add('show');
+  clearTimeout(Number(toast.dataset.timer));
+  toast.dataset.timer = String(setTimeout(() => toast.classList.remove('show'), 2500));
 }
 
 function playAddAnimation(btn) {

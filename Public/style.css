@@ -1,8 +1,60 @@
 /* ============================================= */
+/* TOKENS: medidas compartidas por todo el sitio  */
+/* (tarjetas de productos y categorías, carrito,  */
+/* detalle) para que los contenedores sean iguales */
+/* ============================================= */
+:root {
+  --radius-card: 12px;
+  --radius-pill: 999px;
+  --card-media-ratio: 1 / 1;
+  --card-media-bg: #f3f3f3;
+  --card-title-lines: 2;
+  --card-title-line-height: 1.3;
+  --content-narrow: 760px;
+  --section-space: clamp(2rem, 5vw, 3rem);
+  --accent: #d4ff00;
+  --ink: #212529;          /* texto principal, navbar, botones oscuros */
+  --surface-soft: #f8f9fa; /* fondo suave de módulos */
+  --border-soft: #e9ecef;  /* bordes suaves */
+  --success: #198754;      /* WhatsApp, "✓", descuentos */
+  --success-hover: #146c43;
+  --back-to-top-size-mobile: 40px;   /* botón "volver arriba" en celular */
+  --back-to-top-offset-mobile: 12px;
+}
+
+/* ============================================= */
 /* BASE: tipografía global del sitio              */
 /* ============================================= */
 body {
   font-family: 'Space Grotesk', sans-serif;
+  overflow-anchor: none;
+}
+
+/* Foco visible y consistente al navegar con teclado */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible {
+  outline: 3px solid #0d6efd;
+  outline-offset: 2px;
+}
+
+/* Espaciado vertical uniforme de las secciones principales */
+.page-section {
+  margin-block: var(--section-space);
+}
+
+/* Título principal de cada página: mismo tamaño en todas */
+.page-title {
+  font-weight: 700;
+  font-size: clamp(1.6rem, 4vw, 2.25rem);
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+/* Contenedor angosto para páginas de lectura/listas (carrito) */
+.content-narrow {
+  max-width: var(--content-narrow);
+  margin-inline: auto;
 }
 
 /* ============================================= */
@@ -17,10 +69,8 @@ body {
 
 .hero h1 {
   color: #fff;
-}
-
-body {
-  overflow-anchor: none;
+  font-size: clamp(2rem, 6vw, 3.5rem);
+  overflow-wrap: anywhere;
 }
 
 /* ============================================= */
@@ -41,16 +91,90 @@ body {
 }
 
 /* ============================================= */
-/* TARJETAS DE PRODUCTO: usadas en grid principal, */
-/* productos similares, y mosaico de categorías    */
+/* TARJETAS: productos (grid principal, ofertas,  */
+/* similares) y categorías usan la misma tarjeta: */
+/* imagen cuadrada + título de máximo 2 líneas,   */
+/* así todas miden lo mismo sin importar el texto */
+/* o el tamaño original de la foto                */
 /* ============================================= */
-.product-card img {
-  border-radius: 12px;
+.product-card {
+  height: 100%;
+  background: transparent;
+}
+
+.product-card-media {
+  position: relative;
+  display: block;
+  aspect-ratio: var(--card-media-ratio);
+  overflow: hidden;
+  border-radius: var(--radius-card);
+  background: var(--card-media-bg);
+}
+
+.product-card-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 0;
   transition: transform 0.2s ease;
 }
 
-.product-card:hover img {
+.product-card:hover .product-card-media img {
   transform: scale(1.03);
+}
+
+/* Título de tarjeta: siempre reserva 2 líneas y corta con "…" si el nombre es más largo */
+.product-card-title,
+.category-card-title {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: var(--card-title-line-height);
+  min-height: calc(1em * var(--card-title-line-height) * var(--card-title-lines));
+  display: -webkit-box;
+  -webkit-line-clamp: var(--card-title-lines);
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* Precio de tarjeta: una sola línea reservada, con o sin precio anterior.
+   El precio actual nunca se corta; si no cabe todo, el anterior termina en "…" */
+.product-card-price {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  min-height: 1.5em;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.product-card-price-now {
+  flex-shrink: 0;
+}
+
+.product-card-price-old {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.category-card-title {
+  font-size: clamp(1rem, 2.5vw, 1.15rem);
+  text-align: center;
+  color: var(--bs-dark);
+  margin-bottom: 0;
+}
+
+.out-of-stock-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
 }
 
 /* ============================================= */
@@ -72,10 +196,18 @@ body {
   font-size: 0.7rem;
   font-weight: 700;
   padding: 3px 6px;
-  background-color: #d4ff00 !important;
+  background-color: var(--accent) !important;
   color: #000 !important;
   border: 2px solid #1a1a1a;
   min-width: 20px;
+}
+
+/* Navbar: colores más claros (variables propias de Bootstrap) */
+.navbar-dark {
+  --bs-navbar-color: rgba(255, 255, 255, 0.9);
+  --bs-navbar-hover-color: #ffffff;
+  --bs-navbar-toggler-border-color: rgba(255, 255, 255, 0.6);
+  --bs-navbar-toggler-icon-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28255, 255, 255, 1%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 14h22M4 21h22'/%3e%3c/svg%3e");
 }
 
 .navbar-toggler {
@@ -84,11 +216,8 @@ body {
   box-shadow: none !important;
 }
 
-
-/* Navbar: colores más claros (variables propias de Bootstrap) */
-.navbar-dark {
-  --bs-navbar-color: rgba(255, 255, 255, 0.9);
-  --bs-navbar-hover-color: #ffffff;
+.navbar-toggler-icon {
+  filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.7));
 }
 
 /* Brillo suave en los links del menú */
@@ -97,27 +226,48 @@ body {
   transition: color 0.2s, text-shadow 0.2s;
 }
 
-.navbar-nav .nav-link:hover {
+.navbar-nav .nav-link:hover,
+.navbar-nav .nav-link[aria-current="page"] {
   text-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
 }
 
-.navbar-dark {
-  --bs-navbar-toggler-border-color: rgba(255, 255, 255, 0.6);
-  --bs-navbar-toggler-icon-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28255, 255, 255, 1%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 14h22M4 21h22'/%3e%3c/svg%3e");
-}
-
-.navbar-toggler {
-  box-shadow: 0 0 8px rgba(255, 255, 255, 0.25);
-}
-
-.navbar-toggler-icon {
-  filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.7));
+.navbar-nav .nav-link[aria-current="page"] {
+  color: #fff;
+  font-weight: 600;
 }
 
 /* ============================================= */
-/* PÁGINA DE PRODUCTO: botón volver, divisor de   */
-/* la sección "Productos similares"               */
+/* PÁGINA DE PRODUCTO: imagen, miniaturas, botón  */
+/* volver, etiqueta de categoría                  */
 /* ============================================= */
+.product-detail-media {
+  width: 100%;
+  aspect-ratio: var(--card-media-ratio);
+  object-fit: contain;
+  background: var(--card-media-bg);
+  border-radius: var(--radius-card);
+}
+
+.product-detail-title {
+  font-size: clamp(1.6rem, 4vw, 2.25rem);
+  overflow-wrap: anywhere;
+}
+
+.product-detail-description {
+  white-space: pre-line; /* respeta los saltos de línea escritos en el admin */
+  overflow-wrap: anywhere;
+}
+
+/* Miniaturas de la galería del producto */
+.thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.thumb {
+  width: 64px; height: 64px; padding: 0; overflow: hidden;
+  border: 2px solid transparent; border-radius: 10px;
+  background: none; cursor: pointer; opacity: 0.7;
+}
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb.active, .thumb[aria-pressed="true"] { border-color: #1b1c22; opacity: 1; }
+
 .back-link {
   display: inline-flex;
   align-items: center;
@@ -136,12 +286,6 @@ body {
   color: white;
 }
 
-.similar-divider {
-  height: 1px;
-  background-color: #e0e0e0;
-  margin: 3rem 0 2rem;
-}
-
 .category-tag {
   background-color: #f0f0f0;
   color: #000;
@@ -157,6 +301,338 @@ body {
 .category-tag:hover {
   background-color: #000;
   color: white;
+}
+
+/* ============================================= */
+/* CARRITO: dos módulos                           */
+/*  1) "Tu pedido": tarjeta blanca con la lista   */
+/*  2) "Resumen": tarjeta oscura con el total     */
+/* ============================================= */
+.cart-module {
+  border-radius: var(--radius-card);
+  padding: clamp(1rem, 3vw, 1.5rem);
+}
+
+.cart-module-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+
+.cart-module-title:focus {
+  outline: none; /* recibe el foco por código, no por teclado */
+}
+
+/* ---------- Módulo 1: Tu pedido ---------- */
+.cart-order {
+  background: #fff;
+  border: 1px solid var(--border-soft);
+  box-shadow: 0 2px 12px rgba(33, 37, 41, 0.05);
+}
+
+/* Cada línea: foto | nombre, precio y cantidad | subtotal y "Quitar" */
+.cart-line {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr) auto;
+  gap: 12px 16px;
+  align-items: center;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.cart-line:first-child {
+  padding-top: 0;
+}
+
+.cart-line-photo {
+  display: block;
+  width: 80px;
+  height: 80px;
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  background: var(--surface-soft);
+}
+
+.cart-line-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.cart-line-info {
+  min-width: 0; /* permite que nombres largos se ajusten en vez de desbordar */
+}
+
+.cart-line-name {
+  display: block;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ink);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.cart-line-name:hover {
+  text-decoration: underline;
+}
+
+.cart-line-unit {
+  font-size: 0.875rem;
+  color: #6c757d;
+  margin: 2px 0 8px;
+}
+
+.cart-line-side {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.cart-line-subtotal {
+  font-weight: 700;
+  margin: 0;
+  white-space: nowrap;
+}
+
+/* "Quitar": discreto, se pone rojo solo al pasar el mouse */
+.cart-line-remove {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+  border: none;
+  background: none;
+  font-size: 0.8rem;
+  color: #6c757d;
+  cursor: pointer;
+}
+
+.cart-line-remove:hover {
+  color: #dc3545;
+}
+
+/* Selector de cantidad tipo píldora: − 2 + */
+.qty-pill {
+  display: inline-flex;
+  align-items: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-pill);
+}
+
+.qty-pill-btn {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.qty-pill-btn:hover:not(:disabled) {
+  background: var(--border-soft);
+}
+
+.qty-pill-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.qty-pill-value {
+  min-width: 2.25ch;
+  text-align: center;
+  font-weight: 600;
+}
+
+.cart-continue {
+  display: inline-flex;
+  gap: 6px;
+  margin-top: 1rem;
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.cart-continue:hover {
+  text-decoration: underline;
+}
+
+/* ---------- Módulo 2: Resumen (mismo look del navbar) ---------- */
+.cart-summary {
+  background: var(--ink);
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(33, 37, 41, 0.18);
+}
+
+.cart-summary-rows {
+  margin: 0 0 1.25rem;
+}
+
+.cart-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.cart-summary-row dt {
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.cart-summary-row dd {
+  margin: 0;
+}
+
+/* El total es lo más grande del módulo, en el color de acento */
+.cart-summary-total {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.cart-summary-total dt {
+  font-weight: 700;
+  color: #fff;
+}
+
+.cart-summary-total dd {
+  font-size: clamp(1.6rem, 4vw, 2rem);
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+
+.cart-summary .btn-outline-light {
+  --bs-btn-border-color: rgba(255, 255, 255, 0.45);
+}
+
+.cart-summary-note {
+  margin: 0.75rem 0 0;
+  font-size: 0.8rem;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.btn-whatsapp {
+  background: var(--success);
+  border-color: var(--success);
+  color: #fff;
+  font-weight: 600;
+}
+
+.btn-whatsapp:hover,
+.btn-whatsapp:focus-visible,
+.btn-whatsapp:active {
+  background: var(--success-hover);
+  border-color: var(--success-hover);
+  color: #fff;
+}
+
+/* ---------- Carrito vacío ---------- */
+.cart-empty {
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+  color: var(--ink);
+  background: var(--surface-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-card);
+}
+
+.cart-empty svg {
+  color: #adb5bd;
+  margin-bottom: 1rem;
+}
+
+.cart-empty-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+/* ---------- Barra inferior fija (solo móvil) ---------- */
+.cart-mobile-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1020;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: var(--ink);
+  color: #fff;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s ease;
+}
+
+.cart-mobile-bar[hidden] {
+  display: none;
+}
+
+.cart-mobile-bar.is-hidden {
+  transform: translateY(110%);
+}
+
+.cart-mobile-bar-total span {
+  display: block;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.cart-mobile-bar-total strong {
+  font-size: 1.15rem;
+  color: var(--accent);
+}
+
+/* Escritorio: el Resumen acompaña al hacer scroll (debajo del navbar fijo) */
+@media (min-width: 992px) {
+  .cart-summary {
+    position: sticky;
+    top: 88px;
+  }
+}
+
+/* Móvil y tablet: mientras la barra fija se ve, el botón "volver arriba" va encima de ella.
+   (La barra se oculta al llegar al Resumen o al footer, así que no se reserva espacio abajo) */
+@media (max-width: 991.98px) {
+  body.cart-bar-visible .back-to-top {
+    bottom: 84px;
+  }
+}
+
+/* Celular: subtotal y "Quitar" pasan debajo del nombre para no apretar la línea */
+@media (max-width: 575.98px) {
+  .cart-line {
+    grid-template-columns: 72px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .cart-line-photo {
+    width: 72px;
+    height: 72px;
+  }
+
+  .cart-line-side {
+    grid-column: 2;
+    flex-direction: row;
+    align-items: center;
+  }
 }
 
 /* ============================================= */
@@ -205,8 +681,9 @@ body {
   color: white;
 }
 
+/* Verde oscuro: el texto blanco cumple el contraste mínimo (WCAG AA) */
 .whatsapp-btn {
-  background-color: #25D366;
+  background-color: #128c4a;
   color: white;
   border: none;
   display: inline-flex;
@@ -214,7 +691,7 @@ body {
 }
 
 .whatsapp-btn:hover {
-  background-color: #1ebe5a;
+  background-color: #0e7a40;
   color: white;
 }
 
@@ -243,23 +720,29 @@ body {
   display: flex;
 }
 
-
-
-.out-of-stock-badge {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  background: #dc2626;
-  color: #fff;
-  font-size: 0.72rem;
-  font-weight: 600;
-  padding: 3px 10px;
-  border-radius: 999px;
+/* Espacio bajo el copyright (antes "pb-4" de Bootstrap: 1.5rem) */
+.footer {
+  padding-bottom: 1.5rem;
 }
 
+/* Móvil: botón más pequeño y pegado a la esquina, y el footer deja libre esa
+   esquina para que el botón nunca tape el copyright */
+@media (max-width: 767.98px) {
+  .back-to-top {
+    width: var(--back-to-top-size-mobile);
+    height: var(--back-to-top-size-mobile);
+    right: var(--back-to-top-offset-mobile);
+    bottom: var(--back-to-top-offset-mobile);
+  }
 
+  .footer {
+    padding-bottom: calc(var(--back-to-top-size-mobile) + var(--back-to-top-offset-mobile) * 2);
+  }
+}
 
-/* Barra de búsqueda desplegable, debajo del divisor de colores */
+/* ============================================= */
+/* BUSCADOR desplegable, debajo del divisor de colores */
+/* ============================================= */
 .search-dropdown {
   max-height: 0;
   overflow: hidden;
@@ -274,13 +757,17 @@ body {
 .search-input {
   width: 100%;
   border: 1.5px solid #212529;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 10px 18px;
   font-size: 1rem;
 }
 .search-input:focus {
   outline: none;
   border-color: white;
+}
+.search-input:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .icon-btn {
@@ -291,5 +778,20 @@ body {
   align-items: center;
   justify-content: center;
   padding: 6px;
+  min-width: 36px;
+  min-height: 36px;
   cursor: pointer;
+}
+
+/* ============================================= */
+/* MOVIMIENTO REDUCIDO: sin animaciones decorativas */
+/* ============================================= */
+@media (prefers-reduced-motion: reduce) {
+  .rainbow-divider { animation: none; }
+  .product-card-media img,
+  .cart-link,
+  .search-dropdown,
+  .cart-mobile-bar { transition: none; }
+  .product-card:hover .product-card-media img,
+  .cart-link:hover { transform: none; }
 }

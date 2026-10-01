@@ -1,6 +1,8 @@
 // Carga los productos desde Firestore y los deja en la lista global `products`.
 // Las páginas deben esperar a `productsReady` antes de usar `products`.
+// Si la carga falla, `productsLoadFailed` queda en true (para mostrar un aviso distinto a "no hay productos").
 const products = [];
+let productsLoadFailed = false;
 
 const productsReady = (async () => {
   try {
@@ -20,6 +22,7 @@ const productsReady = (async () => {
     snap.forEach(d => products.push(d.data()));
     products.sort((a, b) => b.id - a.id); // más nuevos primero, como antes
   } catch (err) {
+    productsLoadFailed = true;
     console.error('No se pudieron cargar los productos desde Firestore:', err);
   }
 })();

@@ -1,0 +1,80 @@
+rules_version = '2';
+
+// =============================================
+// REGLAS DE FIRESTORE: la validación "del servidor" de Shopymemes.
+// La tienda escribe directo a Firestore desde admin.html, así que estas reglas son
+// la única barrera real: rechazan cualquier escritura que no venga del admin o que
+// no cumpla los límites, aunque alguien salte las validaciones del navegador.
+//
+// Los límites deben coincidir con LIMITS en Public/shared.js
+// (npm test verifica que coincidan).
+//
+// Admin: la lista de isAdmin() tiene el UID del usuario administrador
+// (Firebase Console > Authentication > Users > columna "User UID").
+// Para dar acceso a otro admin, agrega su UID a esa lista.
+// =============================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null && request.auth.uid in ['lnIoAYlWoAQDEaOgL5nfyAQW97i2'];
+    }
+
+    // Links https o rutas del propio sitio (/uploads/...)
+    function isImageUrl(v) {
+      return v is string && v.size() > 0 && v.size() <= 500
+        && (v.matches('https://.+') || v.matches('/[^/].*'));
+    }
+
+    function isSlug(v) {
+      return v is string && v.size() > 0 && v.size() <= 40
+        && v.matches('[a-z0-9]+(-[a-z0-9]+)*');
+    }
+
+    function isPrice(v) {
+      return v is int && v > 0 && v <= 100000000;
+    }
+
+    function validProduct(d, productId) {
+      return d.keys().hasOnly(['id', 'name', 'price', 'oldPrice', 'image', 'images',
+                               'description', 'category', 'offer', 'stock'])
+        && d.keys().hasAll(['id', 'name', 'price', 'image', 'category', 'offer', 'stock'])
+        && d.id is int && string(d.id) == productId
+        && d.name is string && d.name.size() > 0 && d.name.size() <= 80
+        && isPrice(d.price)
+        && (!('oldPrice' in d) || d.oldPrice == null || isPrice(d.oldPrice))
+        && isImageUrl(d.image)
+        && (!('images' in d) || (d.images is list && d.images.size() <= 6))
+        && (!('description' in d) || (d.description is string && d.description.size() <= 1000))
+        && isSlug(d.category)
+        && d.offer is bool
+        && d.stock is int && d.stock >= 0 && d.stock <= 9999;
+    }
+
+    function validCategory(d, slug) {
+      return d.keys().hasOnly(['slug', 'name', 'image'])
+        && d.keys().hasAll(['slug', 'name', 'image'])
+        && isSlug(slug) && d.slug == slug
+        && d.name is string && d.name.size() > 0 && d.name.size() <= 40
+        && isImageUrl(d.image);
+    }
+
+    // Cualquiera puede ver el catálogo; solo el admin puede cambiarlo
+    match /products/{productId} {
+      allow read: if true;
+      allow create, update: if isAdmin() && validProduct(request.resource.data, productId);
+      allow delete: if isAdmin();
+    }
+
+    match /categories/{slug} {
+      allow read: if true;
+      allow create, update: if isAdmin() && validCategory(request.resource.data, slug);
+      allow delete: if isAdmin();
+    }
+
+    // Todo lo demás: cerrado
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
