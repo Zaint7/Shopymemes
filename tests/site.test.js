@@ -95,6 +95,11 @@ test('las imágenes que citan style.css, las páginas y og:image existen en Publ
   }
 });
 
+test('index.html tiene la etiqueta de verificación de Google Search Console en el <head>', () => {
+  const head = read('index.html').split('</head>')[0];
+  assert.ok(head.includes('<meta name="google-site-verification" content="2Oi4zgFrbLUZ8oP5cGoyBqPBLhZTJaTtxJ7V_SIDX-s"'));
+});
+
 test('admin.html: todo campo que se guarda en la base de datos tiene límite', () => {
   const admin = read('admin.html');
   const persisted = ['fieldName', 'fieldDescription', 'fieldCategory', 'fieldImage',
