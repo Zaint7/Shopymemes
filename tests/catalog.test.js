@@ -49,3 +49,38 @@ test('assertCatalogUsable rechaza un catálogo sin productos (no se publica una 
   assert.throws(() => assertCatalogUsable(buildCatalog([p(1, { deleted: true })])), /sin productos/);
   assert.doesNotThrow(() => assertCatalogUsable(buildCatalog([p(1)])));
 });
+
+const SITE = 'https://shopymemes.web.app';
+const catalogOf = (products, categories = []) => ({ version: 0, products, categories });
+
+test('buildSitemap incluye las páginas fijas y un URL por producto y por categoría', async () => {
+  const { buildSitemap } = await load();
+  const xml = buildSitemap(catalogOf([p(7), p(9)], [{ slug: 'mugs', name: 'Mugs', image: 'https://a.co/c.png' }]), SITE);
+  for (const url of [`${SITE}/`, `${SITE}/ofertas.html`, `${SITE}/categorias.html`,
+    `${SITE}/index.html?category=mugs`, `${SITE}/product.html?id=7`, `${SITE}/product.html?id=9`]) {
+    assert.ok(xml.includes(`<loc>${url}</loc>`), `falta ${url}`);
+  }
+  assert.match(xml, /^<\?xml version="1\.0" encoding="UTF-8"\?>/);
+  assert.match(xml, /<urlset xmlns="http:\/\/www\.sitemaps\.org\/schemas\/sitemap\/0\.9">/);
+});
+
+test('buildSitemap no lista carrito ni admin y no repite URLs', async () => {
+  const { buildSitemap } = await load();
+  const xml = buildSitemap(catalogOf([p(1)]), SITE);
+  assert.ok(!xml.includes('carrito') && !xml.includes('admin'));
+  const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m => m[1]);
+  assert.equal(new Set(locs).size, locs.length);
+});
+
+test('buildSitemap pone lastmod solo si el producto tiene updatedAt', async () => {
+  const { buildSitemap } = await load();
+  const xml = buildSitemap(catalogOf([p(1, { updatedAt: Date.UTC(2026, 10, 20, 12) }), p(2)]), SITE);
+  assert.match(xml, /product\.html\?id=1<\/loc>\s*<lastmod>2026-11-20<\/lastmod>/);
+  assert.ok(!/product\.html\?id=2<\/loc>\s*<lastmod>/.test(xml));
+});
+
+test('buildSitemap escapa caracteres especiales de XML', async () => {
+  const { buildSitemap } = await load();
+  const xml = buildSitemap(catalogOf([], [{ slug: 'a&b<c', name: 'x', image: 'https://a.co/c.png' }]), SITE);
+  assert.ok(xml.includes('category=a&amp;b&lt;c'));
+});
