@@ -73,6 +73,28 @@ test('la revisión de cambios espera un momento (con tope) y el admin invalida l
   assert.ok(admin.includes('shopymemes_catalog_v1'));
 });
 
+test('ninguna imagen de Public pesa más de 300 KB (presupuesto de ancho de banda de Hosting)', () => {
+  const heavy = fs.readdirSync(PUBLIC)
+    .filter(f => /\.(png|jpe?g|webp|gif)$/i.test(f))
+    .map(f => ({ f, kb: Math.round(fs.statSync(path.join(PUBLIC, f)).size / 1024) }))
+    .filter(x => x.kb > 300);
+  assert.deepEqual(heavy, [], 'Sube imágenes grandes a Cloudinary o comprímelas');
+});
+
+test('las imágenes que citan style.css, las páginas y og:image existen en Public', () => {
+  const refs = new Set();
+  const css = read('style.css');
+  for (const m of css.matchAll(/url\(['"]?\/([^'")?#]+)/g)) refs.add(m[1]);
+  for (const file of fs.readdirSync(PUBLIC).filter(f => f.endsWith('.html'))) {
+    const html = read(file);
+    for (const m of html.matchAll(/(?:src|content)="\/([^"?#]+\.(?:png|jpe?g|webp|gif|ico))"/g)) refs.add(m[1]);
+  }
+  for (const ref of refs) {
+    if (ref.startsWith('uploads/')) continue; // fotos subidas a mano, ya no se usan
+    assert.ok(fs.existsSync(path.join(PUBLIC, ref)), `Public/${ref} no existe`);
+  }
+});
+
 test('admin.html: todo campo que se guarda en la base de datos tiene límite', () => {
   const admin = read('admin.html');
   const persisted = ['fieldName', 'fieldDescription', 'fieldCategory', 'fieldImage',

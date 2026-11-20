@@ -63,7 +63,7 @@ input:focus-visible {
 .hero {
   background:
     linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.45)),
-    url('/fondo.png') center / cover no-repeat;
+    url('/fondo.webp') center / cover no-repeat;
   min-height: 260px; /* altura final, cuando ya scrolleaste */
 }
 
