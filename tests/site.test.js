@@ -35,6 +35,44 @@ test('firestore.rules acepta updatedAt (entero >= 0) y deleted (bool) en product
   }
 });
 
+test('admin.html marca updatedAt en cada cambio de producto y no borra productos de verdad', () => {
+  const admin = read('admin.html');
+  assert.ok((admin.match(/updatedAt/g) || []).length >= 4, 'guardar, oferta y borrar deben escribir updatedAt');
+  assert.ok(!/deleteDoc\(doc\(db, 'products'/.test(admin), 'los productos se marcan deleted:true, no se borran');
+  assert.match(admin, /deleted: true/);
+  assert.match(admin, /filter\(p => !p\.deleted\)/);
+});
+
+test('products.js usa catalog.json con sincronización y las páginas cargan la versión nueva', () => {
+  const js = read('products.js');
+  for (const piece of ['catalog.json', 'pickNewerCatalog', 'mergeProducts', 'filter(p => !p.deleted)']) {
+    assert.ok(js.includes(piece), `products.js debería contener "${piece}"`);
+  }
+  for (const page of ['index.html', 'ofertas.html', 'product.html', 'carrito.html']) {
+    assert.ok(read(page).includes('src="products.js?v=4"'), `${page}: debe cargar products.js?v=4`);
+  }
+});
+
+test('toda página que carga shared.js lo pide con versión (si no, el navegador usa una copia vieja)', () => {
+  for (const page of pages) {
+    const html = read(page);
+    if (!html.includes('shared.js"') && !html.includes('shared.js?')) continue;
+    assert.ok(html.includes('src="shared.js?v=3"'), `${page}: debe cargar shared.js?v=3`);
+  }
+});
+
+test('products.js no deja la página colgada si algo falla al usar el catálogo', () => {
+  const js = read('products.js');
+  assert.ok(js.includes('products.length = 0'), 'ante un error debe vaciar la lista y volver a leer todo de Firestore');
+});
+
+test('la revisión de cambios espera un momento (con tope) y el admin invalida la copia de la tienda', () => {
+  assert.ok(read('products.js').includes('Promise.race'), 'products.js debe esperar la revisión con un tope de tiempo');
+  const admin = read('admin.html');
+  assert.ok((admin.match(/forgetStoreCatalog\(\)/g) || []).length >= 4, 'guardar, oferta y borrar deben llamar forgetStoreCatalog()');
+  assert.ok(admin.includes('shopymemes_catalog_v1'));
+});
+
 test('admin.html: todo campo que se guarda en la base de datos tiene límite', () => {
   const admin = read('admin.html');
   const persisted = ['fieldName', 'fieldDescription', 'fieldCategory', 'fieldImage',
@@ -83,7 +121,7 @@ test('shared.js se carga antes que cart.js y layout.js', () => {
     const html = read(page);
     const cart = html.indexOf('src="cart.js"');
     if (cart === -1) continue;
-    const shared = html.indexOf('src="shared.js"');
+    const shared = html.indexOf('src="shared.js');
     assert.ok(shared !== -1 && shared < cart, `${page}: shared.js debe cargarse antes que cart.js`);
   }
 });

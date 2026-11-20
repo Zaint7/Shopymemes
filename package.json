@@ -4,6 +4,8 @@
   "main": "db.js",
   "scripts": {
     "test": "node --test \"tests/*.test.js\"",
+    "publicar": "node scripts/generar-sitio.mjs",
+    "desplegar": "npm test && npm run publicar && firebase deploy --only hosting",
     "start": "node server.js"
   },
   "keywords": [],

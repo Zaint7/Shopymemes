@@ -6,7 +6,7 @@
   <title>Admin | Shopymemes</title>
   <meta name="robots" content="noindex, nofollow">
   <link rel="icon" type="image/png" href="/favicon.ico">
-  <script src="shared.js"></script>
+  <script src="shared.js?v=3"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
@@ -866,7 +866,8 @@
 
   async function loadProducts() {
     const snap = await getDocs(collection(db, 'products'));
-    productsCache = snap.docs.map(d => d.data()).sort((a, b) => b.id - a.id);
+    // Los productos borrados quedan en Firestore con deleted:true (así la tienda se entera); aquí no se muestran
+    productsCache = snap.docs.map(d => d.data()).filter(p => !p.deleted).sort((a, b) => b.id - a.id);
     productCount.textContent = `(${productsCache.length})`;
     applyFilter();
   }
@@ -881,11 +882,20 @@
 
   document.getElementById('searchInput').addEventListener('input', applyFilter);
 
+  // La tienda guarda una copia del catálogo en este navegador; al borrarla, la próxima vez que se abra
+  // la tienda en este mismo navegador revisa los cambios de inmediato (y ves el producto nuevo al instante)
+  function forgetStoreCatalog() {
+    try { localStorage.removeItem('shopymemes_catalog_v1'); } catch { /* sin acceso a localStorage: no pasa nada */ }
+  }
+
   // Cambia solo el campo "offer" del producto en Firestore
   async function toggleOffer(product, checked) {
     try {
-      await updateDoc(doc(db, 'products', String(product.id)), { offer: checked });
+      const updatedAt = Date.now(); // la tienda detecta el cambio por esta marca
+      await updateDoc(doc(db, 'products', String(product.id)), { offer: checked, updatedAt });
       product.offer = checked;
+      product.updatedAt = updatedAt;
+      forgetStoreCatalog();
       applyFilter(); // redibuja para mostrar/ocultar el sello "Oferta"
     } catch (err) {
       alert(friendlyError(err));
@@ -904,7 +914,8 @@
     if (e.target.matches('.delete-btn')) {
       if (!confirm(`¿Borrar "${product.name}"?`)) return;
       try {
-        await deleteDoc(doc(db, 'products', String(id)));
+        await updateDoc(doc(db, 'products', String(id)), { deleted: true, updatedAt: Date.now() });
+        forgetStoreCatalog();
         loadProducts();
       } catch (err) {
         alert(friendlyError(err));
@@ -1140,10 +1151,12 @@
     // así los más nuevos salen primero y nunca se reutiliza el id de un producto borrado)
     const existingId = document.getElementById('productId').value;
     product.id = existingId ? Number(existingId) : Date.now();
+    product.updatedAt = Date.now(); // la tienda detecta el cambio por esta marca
 
     try {
       await ensureCategory(product.category);
       await setDoc(doc(db, 'products', String(product.id)), product);
+      forgetStoreCatalog();
     } catch (err) {
       formError.textContent = friendlyError(err);
       formError.style.display = 'block';

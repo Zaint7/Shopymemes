@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   LIMITS, escapeHtml, slugify, isValidImageUrl, validateProduct, validateCategory,
-  maxQtyFor, productCardHtml, isValidUpdatedAt
+  maxQtyFor, productCardHtml, isValidUpdatedAt, mergeProducts, isValidCatalog, pickNewerCatalog
 } = require('../Public/shared.js');
 
 const validProduct = {
@@ -111,4 +111,47 @@ test('isValidUpdatedAt acepta enteros >= 0 y rechaza todo lo demás', () => {
   assert.ok(!isValidUpdatedAt('1790823924000'));
   assert.ok(!isValidUpdatedAt(null));
   assert.ok(!isValidUpdatedAt(undefined));
+});
+
+const item = (id, extra = {}) => ({ id, name: `P${id}`, price: 1000, ...extra });
+
+test('mergeProducts agrega, reemplaza y quita los marcados deleted', () => {
+  const base = [item(3), item(2, { name: 'Viejo', updatedAt: 10 }), item(1)];
+  const { products } = mergeProducts(base, [
+    item(2, { name: 'Nuevo', updatedAt: 20 }),
+    item(1, { deleted: true, updatedAt: 30 }),
+    item(4, { updatedAt: 40 })
+  ], 10);
+  assert.deepEqual(products.map(p => p.id), [4, 3, 2]);
+  assert.equal(products.find(p => p.id === 2).name, 'Nuevo');
+});
+
+test('mergeProducts: version es el mayor updatedAt visto y no muta la lista base', () => {
+  const base = [item(1)];
+  const out = mergeProducts(base, [item(2, { updatedAt: 500 }), item(3, { updatedAt: 200 })], 100);
+  assert.equal(out.version, 500);
+  assert.equal(base.length, 1);
+  assert.equal(mergeProducts(base, [], 100).version, 100);
+});
+
+test('mergeProducts ignora un cambio más viejo que el producto que ya se tiene', () => {
+  const { products } = mergeProducts([item(1, { name: 'Actual', updatedAt: 50 })], [item(1, { name: 'Viejo', updatedAt: 40 })], 50);
+  assert.equal(products[0].name, 'Actual');
+});
+
+test('isValidCatalog rechaza datos dañados', () => {
+  assert.ok(isValidCatalog({ version: 0, products: [] }));
+  for (const bad of [null, undefined, {}, 'x', { version: '5', products: [] }, { version: 5, products: {} }, { version: -1, products: [] }]) {
+    assert.ok(!isValidCatalog(bad), JSON.stringify(bad));
+  }
+});
+
+test('pickNewerCatalog elige la versión mayor, ignora lo inválido y devuelve null si no hay nada', () => {
+  const a = { version: 5, products: [] };
+  const b = { version: 9, products: [] };
+  assert.equal(pickNewerCatalog(a, b), b);
+  assert.equal(pickNewerCatalog(b, a), b);
+  assert.equal(pickNewerCatalog(a, { version: 'x' }), a);
+  assert.equal(pickNewerCatalog(null, undefined), null);
+  assert.equal(pickNewerCatalog(a, { version: 5, products: [] }), a); // empate: gana el primero
 });

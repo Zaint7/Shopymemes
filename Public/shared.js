@@ -165,9 +165,40 @@ function productCardHtml(p, { colClass = 'col-6 col-md-4 col-lg-3', extraBtnClas
   `;
 }
 
+// ---------- Catálogo: mezcla de la foto estática (catalog.json) con los cambios de Firestore ----------
+// Un catálogo válido es { version: entero >= 0, products: [...] } (lo genera scripts/generar-sitio.mjs).
+function isValidCatalog(c) {
+  return Boolean(c) && Array.isArray(c.products) && Number.isInteger(c.version) && c.version >= 0;
+}
+
+// De dos catálogos (p. ej. el guardado en el navegador y el de catalog.json) devuelve el de mayor
+// versión; ignora los dañados; null si ninguno sirve. En empate gana el primero.
+function pickNewerCatalog(a, b) {
+  const valid = [a, b].filter(isValidCatalog);
+  if (valid.length === 0) return null;
+  return valid.reduce((best, c) => (c.version > best.version ? c : best));
+}
+
+// Aplica los cambios leídos de Firestore (productos con updatedAt mayor que la versión) a la lista base:
+// agrega o reemplaza, y quita los marcados deleted:true. No modifica `base`.
+function mergeProducts(base, changes, version = 0) {
+  const byId = new Map(base.map(p => [p.id, p]));
+  let newest = version;
+  for (const change of changes) {
+    const stamp = Number.isInteger(change.updatedAt) ? change.updatedAt : 0;
+    newest = Math.max(newest, stamp);
+    const current = byId.get(change.id);
+    if (current && (Number.isInteger(current.updatedAt) ? current.updatedAt : 0) > stamp) continue; // ya tenemos algo más nuevo
+    if (change.deleted) byId.delete(change.id);
+    else byId.set(change.id, change);
+  }
+  return { version: newest, products: [...byId.values()].sort((a, b) => b.id - a.id) };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     LIMITS, escapeHtml, formatPrice, slugify, isValidImageUrl, validateProduct, validateCategory,
-    maxQtyFor, priceHtml, productCardHtml, isValidUpdatedAt
+    maxQtyFor, priceHtml, productCardHtml, isValidUpdatedAt,
+    isValidCatalog, pickNewerCatalog, mergeProducts
   };
 }
