@@ -59,6 +59,12 @@ function isValidImageUrl(src) {
   }
 }
 
+// Marca de última modificación de un producto: milisegundos (Date.now()), entero >= 0.
+// Los productos viejos no la tienen; quien la lee debe tratarlos como 0.
+function isValidUpdatedAt(v) {
+  return Number.isInteger(v) && v >= 0;
+}
+
 const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 // Recibe los valores tal cual vienen del formulario (strings) y devuelve { product } o { error }
@@ -162,6 +168,6 @@ function productCardHtml(p, { colClass = 'col-6 col-md-4 col-lg-3', extraBtnClas
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     LIMITS, escapeHtml, formatPrice, slugify, isValidImageUrl, validateProduct, validateCategory,
-    maxQtyFor, priceHtml, productCardHtml
+    maxQtyFor, priceHtml, productCardHtml, isValidUpdatedAt
   };
 }

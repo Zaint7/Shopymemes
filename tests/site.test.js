@@ -28,6 +28,13 @@ test('firestore.rules usa los mismos límites que shared.js', () => {
   }
 });
 
+test('firestore.rules acepta updatedAt (entero >= 0) y deleted (bool) en productos', () => {
+  const rules = fs.readFileSync(path.join(ROOT, 'firestore.rules'), 'utf8');
+  for (const snippet of ["'updatedAt', 'deleted'", 'd.updatedAt is int && d.updatedAt >= 0', 'd.deleted is bool']) {
+    assert.ok(rules.includes(snippet), `firestore.rules debería contener "${snippet}"`);
+  }
+});
+
 test('admin.html: todo campo que se guarda en la base de datos tiene límite', () => {
   const admin = read('admin.html');
   const persisted = ['fieldName', 'fieldDescription', 'fieldCategory', 'fieldImage',

@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   LIMITS, escapeHtml, slugify, isValidImageUrl, validateProduct, validateCategory,
-  maxQtyFor, productCardHtml
+  maxQtyFor, productCardHtml, isValidUpdatedAt
 } = require('../Public/shared.js');
 
 const validProduct = {
@@ -101,4 +101,14 @@ test('productCardHtml escapa datos y desactiva productos agotados', () => {
 
   const available = productCardHtml({ id: 2, name: 'Taza', price: 1000, image: 'https://a.co/a.png', stock: 2 });
   assert.ok(!/\sdisabled/.test(available));
+});
+
+test('isValidUpdatedAt acepta enteros >= 0 y rechaza todo lo demás', () => {
+  assert.ok(isValidUpdatedAt(0));
+  assert.ok(isValidUpdatedAt(1790823924000));
+  assert.ok(!isValidUpdatedAt(-1));
+  assert.ok(!isValidUpdatedAt(1.5));
+  assert.ok(!isValidUpdatedAt('1790823924000'));
+  assert.ok(!isValidUpdatedAt(null));
+  assert.ok(!isValidUpdatedAt(undefined));
 });
