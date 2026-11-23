@@ -37,7 +37,8 @@ service cloud.firestore {
 
     function validProduct(d, productId) {
       return d.keys().hasOnly(['id', 'name', 'price', 'oldPrice', 'image', 'images',
-                               'description', 'category', 'offer', 'stock', 'updatedAt', 'deleted'])
+                               'description', 'category', 'offer', 'stock', 'updatedAt', 'deleted',
+                               'personalizable', 'tipoPersonalizacion'])
         && d.keys().hasAll(['id', 'name', 'price', 'image', 'category', 'offer', 'stock'])
         && d.id is int && string(d.id) == productId
         && d.name is string && d.name.size() > 0 && d.name.size() <= 80
@@ -51,7 +52,11 @@ service cloud.firestore {
         && d.stock is int && d.stock >= 0 && d.stock <= 9999
         // updatedAt (ms) y deleted son opcionales: los productos viejos no los tienen
         && (!('updatedAt' in d) || (d.updatedAt is int && d.updatedAt >= 0))
-        && (!('deleted' in d) || d.deleted is bool);
+        && (!('deleted' in d) || d.deleted is bool)
+        // Personalizable con foto: el tipo es obligatorio si personalizable es true
+        && (!('personalizable' in d) || d.personalizable is bool)
+        && (!('tipoPersonalizacion' in d) || d.tipoPersonalizacion in ['taza', 'cojin', 'llavero'])
+        && (d.get('personalizable', false) == false || d.get('tipoPersonalizacion', '') in ['taza', 'cojin', 'llavero']);
     }
 
     function validCategory(d, slug) {

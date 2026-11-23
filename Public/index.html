@@ -14,11 +14,14 @@
   <meta name="theme-color" content="#212529">
   <link rel="icon" type="image/png" href="/favicon.ico">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <script src="shared.js?v=3"></script>
+  <script src="shared.js?v=9"></script>
   <script src="products.js?v=4"></script>
   <script src="cart.js"></script>
   <script src="layout.js"></script>
-  <link rel="stylesheet" href="style.css?v=2">
+  <link rel="stylesheet" href="style.css?v=7">
+  <script src="analytics-config.js?v=1"></script>
+  <script src="analytics.js?v=1" defer></script>
+  <script src="animaciones.js?v=2" defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
@@ -44,6 +47,37 @@
 
 <!-- Divisor decorativo animado, separa bienvenida de productos -->
 <div class="rainbow-divider" aria-hidden="true"></div>
+
+<!-- ======================================================= -->
+<!-- PERSONALIZA: visor de prueba (seccion-personaliza.js lo   -->
+<!-- inicia solo cuando la sección entra en pantalla)          -->
+<!-- ======================================================= -->
+<section class="personaliza-seccion" id="personaliza" aria-labelledby="personalizaTitulo">
+  <div class="container">
+    <div class="row align-items-center g-4">
+      <div class="col-12 col-lg-6 text-center text-lg-start">
+        <h2 class="personaliza-titulo" id="personalizaTitulo">PERSONALIZA TU PRODUCTO Y VISUALÍZALO</h2>
+        <p class="personaliza-subtitulo">Sube tu foto y mira cómo queda en una taza, un cojín o un llavero antes de pedirlo.</p>
+        <div class="personaliza-tabs" role="group" aria-label="Tipo de producto">
+          <button type="button" class="btn btn-outline-dark rounded-pill personaliza-tab" data-tipo="llavero" aria-pressed="true">Llavero</button>
+          <button type="button" class="btn btn-outline-dark rounded-pill personaliza-tab" data-tipo="taza" aria-pressed="false">Taza</button>
+          <button type="button" class="btn btn-outline-dark rounded-pill personaliza-tab" data-tipo="cojin" aria-pressed="false">Cojín</button>
+        </div>
+        <div class="d-flex flex-wrap gap-2 justify-content-center justify-content-lg-start">
+          <button type="button" class="btn btn-dark rounded-pill px-4" id="personalizaSubir">Prueba con tu foto</button>
+          <a class="btn btn-outline-dark rounded-pill px-4" id="personalizaAbrir" href="personalizar.html?tipo=llavero">Abrir el visor completo</a>
+        </div>
+        <input type="file" id="personalizaArchivo" accept="image/jpeg,image/png,image/webp" class="d-none" aria-label="Elegir una foto">
+        <p class="personaliza-estado" id="personalizaEstado" role="status" aria-live="polite"></p>
+      </div>
+      <div class="col-12 col-lg-6">
+        <div class="personaliza-escena" id="personalizaEscena">
+          <canvas id="personalizaCanvas" class="personaliza-canvas" width="600" height="600" role="img" aria-label="Vista previa del producto personalizado"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
 <!-- ======================================================= -->
 <!-- GRID DE PRODUCTOS: filtro (A-Z/precio) + tarjetas dinámicas -->
@@ -72,7 +106,63 @@
   </div>
 
   <div class="row g-3" id="productGrid" aria-live="polite" aria-busy="true">
-    <div class="col-12 text-center text-muted py-5">Cargando productos...</div>
+    <p class="visually-hidden">Cargando productos...</p>
+    <div class="col-6 col-md-4 col-lg-3 skeleton-card" aria-hidden="true">
+      <div class="skeleton skeleton-media"></div>
+      <div class="skeleton skeleton-line"></div>
+      <div class="skeleton skeleton-line" style="width: 80%"></div>
+      <div class="skeleton skeleton-line is-short"></div>
+      <div class="skeleton skeleton-btn"></div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-3 skeleton-card" aria-hidden="true">
+      <div class="skeleton skeleton-media"></div>
+      <div class="skeleton skeleton-line"></div>
+      <div class="skeleton skeleton-line" style="width: 80%"></div>
+      <div class="skeleton skeleton-line is-short"></div>
+      <div class="skeleton skeleton-btn"></div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-3 skeleton-card" aria-hidden="true">
+      <div class="skeleton skeleton-media"></div>
+      <div class="skeleton skeleton-line"></div>
+      <div class="skeleton skeleton-line" style="width: 80%"></div>
+      <div class="skeleton skeleton-line is-short"></div>
+      <div class="skeleton skeleton-btn"></div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-3 skeleton-card" aria-hidden="true">
+      <div class="skeleton skeleton-media"></div>
+      <div class="skeleton skeleton-line"></div>
+      <div class="skeleton skeleton-line" style="width: 80%"></div>
+      <div class="skeleton skeleton-line is-short"></div>
+      <div class="skeleton skeleton-btn"></div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-3 skeleton-card" aria-hidden="true">
+      <div class="skeleton skeleton-media"></div>
+      <div class="skeleton skeleton-line"></div>
+      <div class="skeleton skeleton-line" style="width: 80%"></div>
+      <div class="skeleton skeleton-line is-short"></div>
+      <div class="skeleton skeleton-btn"></div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-3 skeleton-card" aria-hidden="true">
+      <div class="skeleton skeleton-media"></div>
+      <div class="skeleton skeleton-line"></div>
+      <div class="skeleton skeleton-line" style="width: 80%"></div>
+      <div class="skeleton skeleton-line is-short"></div>
+      <div class="skeleton skeleton-btn"></div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-3 skeleton-card" aria-hidden="true">
+      <div class="skeleton skeleton-media"></div>
+      <div class="skeleton skeleton-line"></div>
+      <div class="skeleton skeleton-line" style="width: 80%"></div>
+      <div class="skeleton skeleton-line is-short"></div>
+      <div class="skeleton skeleton-btn"></div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-3 skeleton-card" aria-hidden="true">
+      <div class="skeleton skeleton-media"></div>
+      <div class="skeleton skeleton-line"></div>
+      <div class="skeleton skeleton-line" style="width: 80%"></div>
+      <div class="skeleton skeleton-line is-short"></div>
+      <div class="skeleton skeleton-btn"></div>
+    </div>
   </div>
 </section>
 </main>
@@ -84,11 +174,23 @@
 <div id="footer-placeholder"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<!-- visor-core.js va antes que visor.js (lo usa como global) -->
+<script src="visor-core.js?v=2"></script>
+<script src="visor.js?v=5"></script>
+<script src="foto-archivo.js?v=1"></script>
+<script src="seccion-personaliza.js?v=2"></script>
 
 <!-- ============================================= -->
 <!-- SCRIPT: renderizado y lógica del grid de productos -->
 <!-- Espera a que Firestore termine de cargar (productsReady) -->
 <!-- ============================================= -->
+<script>
+  // ¿La URL pide una búsqueda o una categoría con valor? (?search= vacío no cuenta, igual que en el grid)
+  function esVistaFiltrada() {
+    const q = new URLSearchParams(window.location.search);
+    return (q.get('search') || '').trim() !== '' || (q.get('category') || '') !== '';
+  }
+</script>
 <script>
   productsReady.then(() => {
     const productGrid = document.getElementById('productGrid');
@@ -96,7 +198,7 @@
 
     // Dibuja las tarjetas de producto a partir de una lista dada (productCardHtml viene de shared.js)
     function renderProducts(list) {
-      productGrid.innerHTML = list.map(p => productCardHtml(p)).join('');
+      productGrid.innerHTML = list.map((p, i) => productCardHtml(p, { prioridad: i === 0 && esVistaFiltrada() })).join('');
     }
 
     // El texto se escapa: puede venir de la URL (?search=...) y no debe interpretarse como HTML
@@ -114,10 +216,11 @@
     function hideHeroSection(title) {
       document.querySelector('.hero').classList.add('d-none');
       document.querySelector('.hero + .rainbow-divider').classList.add('d-none');
+      document.getElementById('personaliza').classList.add('d-none');
       const oldTitle = document.getElementById('pageTitle');
       const h1 = document.createElement('h1');
       h1.id = oldTitle.id;
-      h1.className = oldTitle.className;
+      h1.className = 'page-title'; // sin reveal/is-visible: animaciones.js lo atiende como nodo nuevo
       h1.textContent = title;
       oldTitle.replaceWith(h1);
       document.title = `${title} | Shopymemes`;
@@ -191,6 +294,16 @@
       }
     });
   });
+</script>
+
+<script>
+  // En búsquedas y categorías la sección está oculta: no se inicia el visor.
+  // Misma condición que usa hideHeroSection (valores vacíos incluidos: ?search= no oculta nada)
+  if (esVistaFiltrada()) {
+    document.getElementById('personaliza').classList.add('d-none'); // también si los productos fallan al cargar
+  } else {
+    iniciarSeccionPersonaliza(document.getElementById('personaliza'));
+  }
 </script>
 
 <script>

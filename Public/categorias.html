@@ -13,10 +13,13 @@
   <meta name="theme-color" content="#212529">
   <link rel="icon" type="image/png" href="/favicon.ico">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <script src="shared.js?v=3"></script>
+  <script src="shared.js?v=9"></script>
   <script src="cart.js"></script>
   <script src="layout.js"></script>
-  <link rel="stylesheet" href="style.css?v=2">
+  <link rel="stylesheet" href="style.css?v=7">
+  <script src="analytics-config.js?v=1"></script>
+  <script src="analytics.js?v=1" defer></script>
+  <script src="animaciones.js?v=2" defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
@@ -85,7 +88,7 @@
           <a href="index.html?category=${encodeURIComponent(c.slug)}" class="text-decoration-none d-block h-100">
             <div class="card product-card border-0">
               <div class="product-card-media">
-                <img src="${escapeHtml(c.image)}" class="card-img-top" alt="" loading="lazy">
+                <img src="${escapeHtml(imgUrl(c.image, 640))}"${imgSrcset(c.image, [320, 640]) ? ` srcset="${escapeHtml(imgSrcset(c.image, [320, 640]))}" sizes="(min-width: 992px) 25vw, (min-width: 768px) 33vw, 50vw"` : ''}${imgOrigAttr(c.image)} class="card-img-top" alt="" width="400" height="400" loading="lazy" decoding="async">
               </div>
               <div class="card-body px-0">
                 <h2 class="category-card-title">${escapeHtml(c.name)}</h2>

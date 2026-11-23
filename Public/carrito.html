@@ -4,16 +4,20 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Carrito | Shopymemes</title>
-  <meta name="description" content="Revisa los productos de tu carrito en Shopymemes y envía tu pedido por WhatsApp.">
+  <meta name="description" content="Revisa tu carrito en Shopymemes, haz tu pedido y confírmalo por WhatsApp.">
   <meta name="robots" content="noindex">
   <meta name="theme-color" content="#212529">
   <link rel="icon" type="image/png" href="/favicon.ico">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <script src="shared.js?v=3"></script>
+  <script src="shared.js?v=9"></script>
   <script src="products.js?v=4"></script>
   <script src="cart.js"></script>
   <script src="layout.js"></script>
-  <link rel="stylesheet" href="style.css?v=2">
+  <script src="pedidos-config.js?v=1"></script>
+  <script src="pedido.js?v=1"></script>
+  <link rel="stylesheet" href="style.css?v=7">
+  <script src="analytics-config.js?v=1"></script>
+  <script src="analytics.js?v=1" defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
@@ -42,7 +46,7 @@
       <circle cx="20" cy="21" r="1"></circle>
       <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
     </svg>
-    <p class="cart-empty-title" id="cartEmptyTitle">Tu carrito está vacío</p>
+    <p class="cart-empty-title" id="cartEmptyTitle" tabindex="-1">Tu carrito está vacío</p>
     <p class="text-muted mb-4" id="cartEmptyText">Agrega tus memes favoritos y aparecerán aquí.</p>
     <a href="index.html" class="btn btn-dark rounded-pill px-4">Ver productos</a>
   </div>
@@ -74,9 +78,9 @@
             <dd id="cartTotal"></dd>
           </div>
         </dl>
-        <button type="button" class="btn btn-whatsapp w-100 rounded-pill mb-2" id="whatsappBtn">Enviar pedido por WhatsApp</button>
+        <button type="button" class="btn btn-whatsapp w-100 rounded-pill mb-2" id="whatsappBtn">Hacer pedido</button>
         <button type="button" class="btn btn-outline-light w-100 rounded-pill" id="clearCartBtn">Vaciar carrito</button>
-        <p class="cart-summary-note">El pago y la entrega se coordinan por WhatsApp</p>
+        <p class="cart-summary-note">Te pedimos tus datos de envío y confirmamos por WhatsApp</p>
       </aside>
     </div>
   </div>
@@ -88,19 +92,205 @@
     <span>Total</span>
     <strong id="cartMobileTotal"></strong>
   </div>
-  <button type="button" class="btn btn-whatsapp rounded-pill px-3" id="whatsappMobileBtn">Enviar por WhatsApp</button>
+  <button type="button" class="btn btn-whatsapp rounded-pill px-3" id="whatsappMobileBtn">Hacer pedido</button>
 </div>
 
 <div id="footer-placeholder" class="mt-auto"></div>
+
+<!-- ============================================= -->
+<!-- CHECKOUT: formulario de datos + confirmación    -->
+<!-- (misma ventana; el JS cambia entre las dos vistas) -->
+<!-- ============================================= -->
+<style>
+  /* ---- Checkout: contraste AA, entradas grandes y toques de la marca (navy #212529 + lima #d4ff00) ---- */
+  #checkoutModal { --co-ink: #1F2937; --co-muted: #4B5563; --co-green: #198754; --co-green-dark: #146c43; --co-line: #9CA3AF; --co-err: #B42318; }
+  #checkoutModal .modal-content { border: 0; border-radius: 16px; overflow: hidden; color: var(--co-ink); }
+  #checkoutModal .co-head { background: #212529; color: #fff; padding: 1rem 1.25rem; display: flex; align-items: center; gap: .75rem; border-bottom: 4px solid #d4ff00; }
+  #checkoutModal .co-chip { flex: none; width: 40px; height: 40px; border-radius: 12px; background: #d4ff00; color: #212529; display: grid; place-items: center; }
+  #checkoutModal .co-step { margin: 0; font-size: .8rem; font-weight: 600; letter-spacing: .02em; color: #d4ff00; }
+  #checkoutModal .co-head h2 { margin: 0; font-size: 1.2rem; font-weight: 700; color: #fff; }
+  #checkoutModal .co-head .btn-close { margin-left: auto; filter: invert(1) grayscale(1) brightness(2); opacity: .9; }
+  #checkoutModal .modal-body { padding: 1rem 1.25rem 1.25rem; background: #fff; }
+  #checkoutModal .modal-footer { background: #fff; border-top: 1px solid #E5E7EB; padding: .75rem 1rem calc(.75rem + env(safe-area-inset-bottom)); gap: .6rem; flex-wrap: nowrap; }
+  #checkoutModal .modal-footer > .btn { margin: 0; }
+  #checkoutModal .co-summary { display: flex; align-items: center; gap: .6rem; background: #ECFCCB; border: 1px solid #BEF264; color: #1F2937; border-radius: 12px; padding: .6rem .85rem; margin-bottom: .5rem; }
+  #checkoutModal .co-summary strong { font-size: 1rem; }
+  #checkoutModal .co-sub { color: var(--co-muted); font-size: .9rem; margin: 0 0 1rem; }
+  #checkoutModal fieldset { border: 0; padding: 0; margin: 0 0 1.1rem; min-width: 0; }
+  #checkoutModal legend { float: none; width: auto; padding: 0; margin: 0 0 .6rem; font-size: .8rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--co-green-dark); display: flex; align-items: center; gap: .5rem; width: 100%; }
+  #checkoutModal legend::after { content: ''; flex: 1; height: 1px; background: #D1D5DB; }
+  #checkoutModal .form-label { color: var(--co-ink); font-weight: 600; font-size: .95rem; margin-bottom: .3rem; }
+  #checkoutModal .co-opt { color: var(--co-muted); font-weight: 400; }
+  #checkoutModal .co-field { position: relative; }
+  #checkoutModal .co-icon { position: absolute; left: .9rem; top: 14px; color: #4B5563; pointer-events: none; }
+  #checkoutModal .form-control { min-height: 48px; font-size: 16px; color: var(--co-ink); background: #fff; border: 1.5px solid var(--co-line); border-radius: 12px; padding: .6rem .9rem .6rem 2.8rem; }
+  /* Cursor de texto visible sobre fondo blanco: I-beam oscuro con halo blanco (si falla, vuelve al cursor normal) */
+  #checkoutModal input:not([type=checkbox]), #checkoutModal textarea { caret-color: #1F2937; cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M8 3h8M8 21h8M12 3v18' fill='none' stroke='white' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M8 3h8M8 21h8M12 3v18' fill='none' stroke='%23111' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") 12 12, text; }
+  #checkoutModal .form-control::placeholder { color: #6B7280; opacity: 1; }
+  #checkoutModal .form-control:focus { border-color: var(--co-green); box-shadow: 0 0 0 .25rem rgba(25, 135, 84, .22); }
+  #checkoutModal .form-control.is-invalid { border-color: var(--co-err); background-image: none; padding-right: .9rem; }
+  #checkoutModal .form-control.is-invalid:focus { box-shadow: 0 0 0 .25rem rgba(180, 35, 24, .2); }
+  #checkoutModal .co-field:has(.is-invalid) .co-icon { color: var(--co-err); }
+  #checkoutModal .invalid-feedback { color: var(--co-err); font-size: .875rem; font-weight: 500; margin-top: .35rem; align-items: flex-start; gap: .35rem; }
+  #checkoutModal .is-invalid ~ .invalid-feedback { display: flex; }
+  #checkoutModal .invalid-feedback::before { content: ''; flex: none; width: 16px; height: 16px; margin-top: 2px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23B42318' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 7v6M12 16.5v.5'/%3E%3C/svg%3E") center / contain no-repeat; }
+  #checkoutModal .co-help { color: var(--co-muted); font-size: .85rem; margin: .3rem 0 0; }
+  #checkoutModal #checkoutErrores { background: #FEF3F2; border: 1px solid #FDA29B; color: var(--co-err); font-weight: 600; border-radius: 12px; }
+  #checkoutModal .form-check { display: flex; flex-wrap: wrap; align-items: flex-start; gap: .2rem .7rem; padding-left: 0; margin-bottom: .75rem; }
+  #checkoutModal .form-check-input { flex: none; float: none; margin: 0; width: 22px; height: 22px; border: 1.5px solid var(--co-line); border-radius: 6px; }
+  #checkoutModal .form-check-input:checked { background-color: var(--co-green); border-color: var(--co-green); }
+  #checkoutModal .form-check-input:focus { border-color: var(--co-green); box-shadow: 0 0 0 .25rem rgba(25, 135, 84, .25); }
+  #checkoutModal .form-check-input.is-invalid { border-color: var(--co-err); }
+  #checkoutModal .form-check-label { flex: 1 1 0; min-width: 0; color: var(--co-ink); font-weight: 500; font-size: .95rem; }
+  #checkoutModal .form-check .invalid-feedback { flex-basis: 100%; }
+  #checkoutModal .checkout-note { display: flex; gap: .65rem; align-items: flex-start; border: 1px solid #A7F3D0; background: #ECFDF5; color: #065F46; border-radius: 12px; padding: .7rem .85rem; font-size: .92rem; line-height: 1.4; }
+  #checkoutModal .checkout-note svg { flex: none; margin-top: 1px; }
+  #checkoutModal .checkout-note.is-anticipado { border-color: #FCD34D; background: #FFFBEB; color: #78350F; }
+  #checkoutModal .co-consent { background: #F3F4F6; border: 1px solid #E5E7EB; border-radius: 12px; padding: .7rem .85rem; font-size: .84rem; line-height: 1.45; color: #374151; margin: .6rem 0 0; }
+  #checkoutModal .btn { min-height: 48px; font-weight: 700; font-size: .95rem; line-height: 1.2; white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; }
+  #checkoutModal #checkoutSubmit, #checkoutModal #doneWhatsapp { background: var(--co-green); border-color: var(--co-green); color: #fff; box-shadow: 0 4px 12px rgba(25, 135, 84, .35); }
+  #checkoutModal #checkoutSubmit:hover, #checkoutModal #doneWhatsapp:hover { background: var(--co-green-dark); border-color: var(--co-green-dark); }
+  #checkoutModal #checkoutSubmit { flex: 1 1 auto; }
+  #checkoutModal #checkoutSubmit:disabled { opacity: .75; }
+  #checkoutModal .btn-outline-dark { color: #212529; border: 1.5px solid #212529; background: #fff; }
+  #checkoutModal .btn-outline-dark:hover { background: #212529; color: #fff; }
+  /* Vista de confirmación */
+  #checkoutModal .co-badge { width: 56px; height: 56px; border-radius: 50%; background: #D1FAE5; color: var(--co-green-dark); display: grid; place-items: center; margin-bottom: .6rem; }
+  #checkoutModal .checkout-id { font-size: clamp(1.35rem, 5vw, 1.7rem); font-weight: 800; line-height: 1.2; margin: 0 0 .5rem; color: var(--co-ink); }
+  #checkoutModal .co-idpill { display: inline-block; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 700; font-size: 1.05rem; background: #F3F4F6; border: 1px dashed #6B7280; border-radius: 999px; padding: .25rem .85rem; margin-bottom: 1rem; user-select: all; color: #111827; }
+  #checkoutModal .checkout-recap { list-style: none; padding: 0; margin: 0; font-size: .95rem; color: var(--co-ink); }
+  #checkoutModal .checkout-recap li { display: flex; justify-content: space-between; gap: .75rem; padding: .4rem 0; border-bottom: 1px solid #E5E7EB; }
+  #checkoutModal .co-total { display: flex; justify-content: space-between; font-weight: 800; font-size: 1.05rem; margin: .6rem 0 1rem; }
+  #checkoutModal .checkout-steps { list-style: none; counter-reset: paso; padding: 0; margin: 0; }
+  #checkoutModal .checkout-steps li { counter-increment: paso; display: flex; align-items: center; gap: .7rem; margin-bottom: .55rem; font-size: .95rem; color: var(--co-ink); }
+  #checkoutModal .checkout-steps li::before { content: counter(paso); flex: none; width: 28px; height: 28px; border-radius: 50%; background: #212529; color: #d4ff00; font-weight: 700; display: grid; place-items: center; font-size: .9rem; }
+  #checkoutModal #doneModoPrueba { background: #FFFBEB; border: 1px solid #FCD34D; color: #78350F; border-radius: 12px; }
+  .checkout-hp { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+  #checkoutForm, #checkoutDone { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+</style>
+<div class="modal fade" id="checkoutModal" tabindex="-1" aria-labelledby="checkoutTitle" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down">
+    <div class="modal-content">
+
+      <!-- Vista 1: datos de envío -->
+      <form id="checkoutForm" novalidate autocomplete="on">
+        <div class="modal-header co-head">
+          <span class="co-chip" aria-hidden="true"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></span>
+          <div>
+            <p class="co-step">Paso 1 de 2 · Tus datos</p>
+            <h2 class="modal-title" id="checkoutTitle" tabindex="-1">Tus datos de envío</h2>
+          </div>
+          <button type="button" class="btn-close" id="checkoutClose" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div class="co-summary"><strong id="checkoutResumen"></strong></div>
+          <p class="co-sub">Solo necesitamos estos datos para enviarlo.</p>
+          <div id="checkoutErrores" class="alert alert-danger py-2 small d-none" role="alert" aria-live="assertive"></div>
+
+          <fieldset>
+            <legend>Quién recibe</legend>
+            <div class="row g-3">
+          <div class="col-md-6">
+            <label for="co-nombre" class="form-label">Nombre completo</label>
+            <div class="co-field"><svg class="co-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><input type="text" class="form-control" id="co-nombre" name="nombre" maxlength="80" autocomplete="name" required aria-describedby="co-nombre-err">
+            <div class="invalid-feedback" id="co-nombre-err"></div></div>
+          </div>
+          <div class="col-md-6">
+            <label for="co-celular" class="form-label">Celular</label>
+            <div class="co-field"><svg class="co-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg><input type="tel" class="form-control" id="co-celular" name="celular" inputmode="tel" maxlength="20" autocomplete="tel" placeholder="300 123 4567" required aria-describedby="co-celular-err co-celular-help">
+            <div class="invalid-feedback" id="co-celular-err"></div></div>
+            <p class="co-help" id="co-celular-help">Te escribiremos por WhatsApp a este número</p>
+          </div>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Dónde lo entregamos</legend>
+            <div class="row g-3">
+          <div class="col-md-6">
+            <label for="co-ciudad" class="form-label">Ciudad</label>
+            <div class="co-field"><svg class="co-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg><input type="text" class="form-control" id="co-ciudad" name="ciudad" maxlength="60" autocomplete="address-level2" required aria-describedby="co-ciudad-err">
+            <div class="invalid-feedback" id="co-ciudad-err"></div></div>
+          </div>
+          <div class="col-md-6">
+            <label for="co-direccion" class="form-label">Dirección completa</label>
+            <div class="co-field"><svg class="co-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg><input type="text" class="form-control" id="co-direccion" name="direccion" maxlength="160" autocomplete="street-address" required aria-describedby="co-direccion-err co-direccion-help">
+            <div class="invalid-feedback" id="co-direccion-err"></div></div>
+            <p class="co-help" id="co-direccion-help">Calle/carrera, número y barrio</p>
+          </div>
+          <div class="col-12">
+            <label for="co-referencias" class="form-label">Barrio, conjunto, torre / apto o referencias <span class="co-opt">(opcional)</span></label>
+            <div class="co-field"><svg class="co-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg><input type="text" class="form-control" id="co-referencias" name="referencias" maxlength="120" aria-describedby="co-referencias-err">
+            <div class="invalid-feedback" id="co-referencias-err"></div></div>
+          </div>
+            </div>
+          </fieldset>
+
+          <!-- Trampa para bots: las personas no lo ven; si viene lleno, se finge éxito y no se envía -->
+          <div class="checkout-hp" aria-hidden="true">
+            <label for="co-sitio-web">Sitio web</label>
+            <input type="text" id="co-sitio-web" name="sitio_web" tabindex="-1" autocomplete="off">
+          </div>
+
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="co-conjunto" name="conjuntoCerrado">
+            <label class="form-check-label" for="co-conjunto">Vivo en conjunto cerrado con portería</label>
+          </div>
+          <div id="checkoutPago" class="checkout-note mb-3" aria-live="polite"></div>
+
+          <div class="form-check mb-0">
+            <input class="form-check-input" type="checkbox" id="co-acepto" name="acepto" required aria-describedby="co-acepto-err co-privacidad">
+            <label class="form-check-label" for="co-acepto">Acepto el tratamiento de mis datos personales para gestionar mi pedido (Ley 1581 de 2012)</label>
+            <div class="invalid-feedback" id="co-acepto-err"></div>
+          </div>
+          <p class="co-consent" id="co-privacidad">Responsable: Shopymemes (WhatsApp <span id="co-wa-num"></span>). Usamos tus datos solo para gestionar y entregar tu pedido, con Google (Hojas de cálculo y Gmail) y WhatsApp. Puedes consultarlos, corregirlos o pedir que los eliminemos por WhatsApp.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-dark rounded-pill px-3 flex-shrink-0" id="checkoutCancel" data-bs-dismiss="modal">Volver al carrito</button>
+          <button type="submit" class="btn rounded-pill px-4" id="checkoutSubmit">Confirmar pedido</button>
+        </div>
+      </form>
+
+      <!-- Vista 2: pedido recibido -->
+      <div id="checkoutDone" class="d-none">
+        <div class="modal-header co-head">
+          <span class="co-chip" aria-hidden="true"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></span>
+          <div>
+            <p class="co-step">Paso 2 de 2 · Confirmación</p>
+            <p class="mb-0 fw-bold text-white">Todo listo</p>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div class="co-badge" aria-hidden="true"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+          <h2 class="checkout-id" id="doneTitle" tabindex="-1"></h2>
+          <div><span class="co-idpill" id="doneIdPill"></span></div>
+          <div id="doneModoPrueba" class="alert alert-warning py-2 small d-none" role="status">Modo prueba: el pedido no se guardó en la hoja</div>
+          <ul class="checkout-recap" id="doneItems"></ul>
+          <p class="co-total"><span>Total</span><span id="doneTotal"></span></p>
+          <div id="donePago" class="checkout-note mb-3"></div>
+          <p class="fw-bold mb-2">¿Qué sigue?</p>
+          <ol class="checkout-steps">
+            <li>Te escribimos por WhatsApp para confirmar tu pedido.</li>
+            <li>Coordinamos el envío contigo.</li>
+            <li>Recibes tu pedido.</li>
+          </ol>
+        </div>
+        <div class="modal-footer flex-column align-items-stretch">
+          <a class="btn rounded-pill" id="doneWhatsapp" href="#" target="_blank" rel="noopener">Abrir WhatsApp para confirmar</a>
+          <a class="btn btn-outline-dark rounded-pill" href="index.html">Seguir comprando</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 <!-- Espera a que Firestore termine de cargar (productsReady) antes de dibujar el carrito -->
 <script>
   productsReady.then(() => {
-    // Número de WhatsApp que recibe los pedidos: código de país + número, sin + ni espacios
-    const WHATSAPP_PEDIDOS = '573242499086';
-
     const cartLoadingEl = document.getElementById('cartLoading');
     const cartEmptyEl = document.getElementById('cartEmpty');
     const cartLayoutEl = document.getElementById('cartLayout');
@@ -146,7 +336,7 @@
       return `
         <li class="cart-line" data-id="${escapeHtml(p.id)}">
           <a href="product.html?id=${encodeURIComponent(p.id)}" class="cart-line-photo" tabindex="-1" aria-hidden="true">
-            <img src="${escapeHtml(p.image)}" alt="" width="80" height="80" loading="lazy">
+            <img src="${escapeHtml(imgUrl(p.image, 160))}"${imgOrigAttr(p.image)} alt="" width="80" height="80" loading="lazy" decoding="async">
           </a>
           <div class="cart-line-info">
             <a href="product.html?id=${encodeURIComponent(p.id)}" class="cart-line-name">${name}</a>
@@ -249,8 +439,90 @@
       }
     });
 
-    // Arma el mensaje del pedido y abre WhatsApp (antes revisa otra vez el stock)
-    function sendOrder() {
+    // ================= CHECKOUT =================
+    // Los botones "Hacer pedido" abren el formulario (antes se revisa otra vez el stock).
+    // Al enviar: valida, abre WhatsApp en el mismo clic, intenta guardar en la hoja (máx. 6 s)
+    // y muestra "Pedido recibido". Si la hoja falla, el pedido sigue adelante por WhatsApp.
+    const CLAVE_ULTIMO_ENVIO = 'shopymemes_ultimo_envio';
+    const modalEl = document.getElementById('checkoutModal');
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    const formEl = document.getElementById('checkoutForm');
+    const doneEl = document.getElementById('checkoutDone');
+    const errorsEl = document.getElementById('checkoutErrores');
+    const submitBtn = document.getElementById('checkoutSubmit');
+    const conjuntoEl = document.getElementById('co-conjunto');
+    const pagoEl = document.getElementById('checkoutPago');
+    const CAMPOS = ['nombre', 'celular', 'ciudad', 'direccion', 'referencias', 'acepto'];
+    let enviando = false;
+    let hayPedidoHecho = false;
+    let abridor = null; // botón que abrió el formulario, para devolverle el foco
+    (() => { const w = PEDIDOS_CONFIG.whatsapp; document.getElementById('co-wa-num').textContent = `+${w.slice(0, 2)} ${w.slice(2, 5)} ${w.slice(5, 8)} ${w.slice(8)}`; })();
+
+    const NOTA_PAGO = {
+      anticipado: { lead: 'Pago anticipado.', texto: ' Por seguridad, en conjuntos cerrados con portería el pago se hace antes del envío. Te enviaremos los datos de pago por WhatsApp.' },
+      contraentrega: { lead: 'Pagas al recibir.', texto: ' Verificamos tu pedido y tu pago antes de entregarte el producto.' }
+    };
+    // Íconos fijos (sin datos del cliente): check verde para contraentrega, escudo con candado para anticipado
+    const ICONO_PAGO = {
+      anticipado: '<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6z"/><rect x="9" y="11" width="6" height="5" rx="1"/><path d="M10 11V9.5a2 2 0 0 1 4 0V11"/></svg>',
+      contraentrega: '<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M7.5 12.5l3 3 6-6.5"/></svg>'
+    };
+    function pintarNotaPago(el, conjunto) {
+      const tipo = conjunto ? 'anticipado' : 'contraentrega';
+      const caja = document.createElement('span');
+      const fuerte = document.createElement('strong');
+      fuerte.textContent = NOTA_PAGO[tipo].lead;
+      caja.append(fuerte, NOTA_PAGO[tipo].texto);
+      el.innerHTML = ICONO_PAGO[tipo];
+      el.append(caja);
+      el.classList.toggle('is-anticipado', conjunto);
+    }
+    conjuntoEl.addEventListener('change', () => pintarNotaPago(pagoEl, conjuntoEl.checked));
+
+    function leerForm() {
+      const v = (name) => formEl.elements[name].value;
+      return {
+        nombre: v('nombre'), celular: v('celular'), ciudad: v('ciudad'), direccion: v('direccion'),
+        referencias: v('referencias'), conjuntoCerrado: conjuntoEl.checked, acepto: formEl.elements.acepto.checked
+      };
+    }
+
+    function mostrarErrores(errores) {
+      const ids = Object.keys(errores);
+      for (const campo of CAMPOS) {
+        const input = formEl.elements[campo];
+        const msg = errores[campo] || '';
+        input.classList.toggle('is-invalid', !!msg);
+        if (msg) input.setAttribute('aria-invalid', 'true'); else input.removeAttribute('aria-invalid');
+        document.getElementById(`co-${campo}-err`).textContent = msg;
+      }
+      errorsEl.textContent = ids.length ? (ids.length === 1 ? 'Revisa 1 campo marcado en rojo.' : `Revisa ${ids.length} campos marcados en rojo.`) : '';
+      errorsEl.classList.toggle('d-none', ids.length === 0);
+      if (ids.length) formEl.elements[CAMPOS.find(c => errores[c])].focus();
+    }
+
+    // Al corregir un campo marcado, su error se actualiza al instante
+    function revalidarCampo(e) {
+      const campo = e.target.name;
+      if (!CAMPOS.includes(campo) || !e.target.classList.contains('is-invalid')) return;
+      const msg = validarCliente(leerForm()).errores[campo] || '';
+      e.target.classList.toggle('is-invalid', !!msg);
+      if (msg) e.target.setAttribute('aria-invalid', 'true'); else e.target.removeAttribute('aria-invalid');
+      document.getElementById(`co-${campo}-err`).textContent = msg;
+      // Cuando ya no queda ningún campo en rojo, el aviso de arriba desaparece
+      if (!formEl.querySelector('.is-invalid')) errorsEl.classList.add('d-none');
+    }
+    formEl.addEventListener('input', revalidarCampo);
+    formEl.addEventListener('change', revalidarCampo);
+
+    // Texto de error general (p. ej. "espera unos segundos"), sin marcar campos
+    function errorGeneral(texto) {
+      errorsEl.textContent = texto;
+      errorsEl.classList.remove('d-none');
+    }
+
+    function abrirCheckout(e) {
+      abridor = e && e.currentTarget ? e.currentTarget : null;
       const adjusted = syncCartWithStock();
       if (adjusted.length > 0) {
         showNotice(`Ajustamos la cantidad de ${adjusted.join(', ')} según el stock disponible. Revisa tu pedido antes de enviarlo.`);
@@ -259,14 +531,123 @@
       }
       const lines = getCartLines();
       if (lines.length === 0) return renderCart();
-      const detalle = lines
-        .map(l => `• ${l.qty} x ${l.product.name} - ${formatPrice(l.product.price * l.qty)}`)
-        .join('\n');
-      const mensaje = `Hola, quiero hacer este pedido en Shopymemes:\n\n${detalle}\n\nTotal: ${formatPrice(getTotal(lines))}`;
-      window.open(`https://wa.me/${WHATSAPP_PEDIDOS}?text=${encodeURIComponent(mensaje)}`, '_blank', 'noopener');
+      const count = lines.reduce((s, l) => s + l.qty, 0);
+      document.getElementById('checkoutResumen').textContent =
+        `${count === 1 ? '1 producto' : count + ' productos'} · Total ${formatPrice(getTotal(lines))}`;
+      formEl.classList.remove('d-none');
+      doneEl.classList.add('d-none');
+      mostrarErrores({});
+      pintarNotaPago(pagoEl, conjuntoEl.checked);
+      modalEl.setAttribute('aria-labelledby', 'checkoutTitle');
+      modal.show();
     }
-    document.getElementById('whatsappBtn').addEventListener('click', sendOrder);
-    document.getElementById('whatsappMobileBtn').addEventListener('click', sendOrder);
+    modalEl.addEventListener('shown.bs.modal', () => {
+      if (!formEl.classList.contains('d-none')) formEl.elements.nombre.focus();
+    });
+    // Mientras se envía no se puede cerrar; al cerrar tras un pedido hecho se redibuja el carrito (ya vacío)
+    modalEl.addEventListener('hide.bs.modal', (e) => { if (enviando) e.preventDefault(); });
+    modalEl.addEventListener('hidden.bs.modal', () => {
+      if (hayPedidoHecho) renderCart();
+      // El foco vuelve al botón que abrió el formulario; si ya no se ve (carrito vacío), al título que quede
+      const destino = abridor && abridor.getClientRects().length > 0
+        ? abridor
+        : document.getElementById(hayPedidoHecho ? 'cartEmptyTitle' : 'orderTitle');
+      destino?.focus?.();
+    });
+    document.getElementById('whatsappBtn').addEventListener('click', abrirCheckout);
+    document.getElementById('whatsappMobileBtn').addEventListener('click', abrirCheckout);
+
+    function leerUltimoEnvio() {
+      try { return Number(localStorage.getItem(CLAVE_ULTIMO_ENVIO)); } catch (e) { return NaN; }
+    }
+    function guardarUltimoEnvio(ms) {
+      try { localStorage.setItem(CLAVE_ULTIMO_ENVIO, String(ms)); } catch (e) { /* sin almacenamiento: se omite */ }
+    }
+
+    // Vista "Pedido recibido". Todo texto del cliente entra con textContent (nunca como HTML).
+    function mostrarConfirmacion(pedido, urlWhatsapp, guardado) {
+      document.getElementById('doneTitle').textContent = `Pedido #${pedido.id} recibido`;
+      document.getElementById('doneIdPill').textContent = pedido.id;
+      const lista = document.getElementById('doneItems');
+      lista.replaceChildren(...pedido.items.map(i => {
+        const li = document.createElement('li');
+        const a = document.createElement('span');
+        a.textContent = `${i.cantidad} x ${i.nombre}`;
+        const b = document.createElement('span');
+        b.textContent = formatPrice(i.subtotal);
+        li.append(a, b);
+        return li;
+      }));
+      document.getElementById('doneTotal').textContent = formatPrice(pedido.total);
+      pintarNotaPago(document.getElementById('donePago'), pedido.conjuntoCerrado);
+      document.getElementById('doneModoPrueba').classList.toggle('d-none', !!PEDIDOS_CONFIG.hojaUrl);
+      const botonWa = document.getElementById('doneWhatsapp');
+      botonWa.classList.toggle('d-none', !urlWhatsapp); // sin enlace en la confirmación de bots
+      if (urlWhatsapp) botonWa.href = urlWhatsapp;
+      modalEl.setAttribute('aria-labelledby', 'doneTitle');
+      formEl.classList.add('d-none');
+      doneEl.classList.remove('d-none');
+      document.getElementById('doneTitle').focus();
+      doneEl.querySelector('.modal-body').scrollTop = 0;
+    }
+
+    formEl.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (enviando) return;
+
+      // Trampa para bots: se finge éxito sin enviar nada ni abrir WhatsApp
+      if (formEl.elements.sitio_web.value.trim() !== '') {
+        const lines = getCartLines();
+        const falso = crearPedido(leerForm(), lines.map(l => ({ nombre: l.product.name, cantidad: l.qty, precioUnitario: l.product.price })));
+        mostrarConfirmacion(falso, null, true);
+        return;
+      }
+
+      const datos = leerForm();
+      const { ok, errores } = validarCliente(datos);
+      mostrarErrores(errores);
+      if (!ok) return;
+
+      const espera = esperaRestanteMs(leerUltimoEnvio(), Date.now());
+      if (espera > 0) return errorGeneral(`Ya enviaste un pedido hace un momento. Espera ${Math.ceil(espera / 1000)} segundos e inténtalo de nuevo.`);
+
+      // El stock se revisa otra vez justo antes de enviar
+      const adjusted = syncCartWithStock();
+      if (adjusted.length > 0) {
+        modal.hide();
+        showNotice(`Ajustamos la cantidad de ${adjusted.join(', ')} según el stock disponible. Revisa tu pedido antes de enviarlo.`);
+        renderCart();
+        return;
+      }
+      const lines = getCartLines();
+      if (lines.length === 0) { modal.hide(); return renderCart(); }
+
+      const pedido = crearPedido(datos, lines.map(l => ({ nombre: l.product.name, cantidad: l.qty, precioUnitario: l.product.price })));
+      const urlWhatsapp = `https://wa.me/${PEDIDOS_CONFIG.whatsapp}?text=${encodeURIComponent(mensajeWhatsApp(pedido))}`;
+
+      // WhatsApp se abre YA, dentro del clic del usuario (si no, el bloqueador de ventanas lo frena).
+      // Si el navegador lo bloquea, el botón "Abrir WhatsApp" de la confirmación hace lo mismo.
+      window.open(urlWhatsapp, '_blank', 'noopener');
+
+      enviando = true;
+      guardarUltimoEnvio(Date.now());
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Enviando…';
+      document.getElementById('checkoutClose').disabled = true;
+      const resultado = await enviarPedido(pedido, PEDIDOS_CONFIG, (url, init) => fetch(url, init));
+      if (!resultado.guardado && PEDIDOS_CONFIG.hojaUrl) {
+        console.warn('Shopymemes: el pedido no se guardó en la hoja (' + resultado.motivo + '). Sigue por WhatsApp:', pedido.id);
+      }
+
+      // El carrito se vacía solo ahora, con el pedido ya confirmado en pantalla
+      clearCart();
+      hayPedidoHecho = true;
+      enviando = false;
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Confirmar pedido';
+      document.getElementById('checkoutClose').disabled = false;
+      mostrarConfirmacion(pedido, urlWhatsapp, resultado.guardado);
+    });
 
     window.addEventListener('scroll', updateMobileBar, { passive: true });
     window.addEventListener('resize', updateMobileBar);

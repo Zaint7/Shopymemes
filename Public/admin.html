@@ -6,7 +6,7 @@
   <title>Admin | Shopymemes</title>
   <meta name="robots" content="noindex, nofollow">
   <link rel="icon" type="image/png" href="/favicon.ico">
-  <script src="shared.js?v=3"></script>
+  <script src="shared.js?v=9"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
@@ -202,6 +202,47 @@
     /* ============================= */
     /* CUADRÍCULA DE PRODUCTOS       */
     /* ============================= */
+    /* ============================= */
+    /* MÉTRICAS                      */
+    /* ============================= */
+    .metric-grid, .metric-panels {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px 24px 0;
+      display: grid;
+      gap: 14px;
+    }
+    .metric-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+    .metric-panels { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); padding-bottom: 32px; align-items: start; }
+    .metric-tile, .metric-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 16px 18px;
+    }
+    .metric-tile .metric-label { margin: 0; color: var(--muted); font-size: 0.85rem; }
+    .metric-tile .metric-value { margin: 4px 0 0; font-family: "Space Grotesk", system-ui, sans-serif; font-size: 1.9rem; font-weight: 700; line-height: 1.1; }
+    .metric-tile.is-warn .metric-value { color: #a16207; }
+    .metric-tile.is-bad .metric-value { color: var(--red); }
+    .metric-card h3 { margin: 0 0 10px; font-size: 1.05rem; font-family: "Space Grotesk", system-ui, sans-serif; }
+    .metric-card ul { margin: 0; padding-left: 18px; }
+    .metric-card li { margin-bottom: 4px; overflow-wrap: anywhere; }
+    .metric-card .metric-note { margin: 0 0 8px; color: var(--muted); font-size: 0.9rem; }
+    .metric-links a { color: #1d4ed8; font-weight: 600; }
+    .est-inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 14px; }
+    .est-inputs label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 4px; }
+    .metric-card .est-results { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+    .est-row { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
+    .est-head { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; justify-content: space-between; }
+    .est-name { font-weight: 600; }
+    .est-val { color: var(--muted); font-size: 0.9rem; }
+    .est-chip { font-size: 0.8rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
+    .est-chip.verde { background: #dcfce7; color: #166534; }
+    .est-chip.ambar { background: #fef9c3; color: #854d0e; }
+    .est-chip.rojo { background: #fee2e2; color: #991b1b; }
+    .est-adv { margin: 6px 0 0; font-size: 0.9rem; }
+    .est-note { margin: 6px 0 0; color: var(--muted); font-size: 0.85rem; }
+
     .products-grid {
       max-width: 1100px;
       margin: 0 auto;
@@ -571,9 +612,10 @@
   <div class="rainbow-line"></div>
 
   <div class="admin-toolbar" style="padding-bottom:16px;">
-    <div class="toolbar-actions">
-      <button type="button" class="btn btn-dark" id="tabProductsBtn" aria-pressed="true">Productos</button>
-      <button type="button" class="btn btn-ghost" id="tabCategoriesBtn" aria-pressed="false">Categorías</button>
+    <div class="toolbar-actions" role="group" aria-label="Secciones del panel">
+      <button type="button" class="btn btn-dark" id="tabProductsBtn" aria-pressed="true" aria-controls="productsView">Productos</button>
+      <button type="button" class="btn btn-ghost" id="tabCategoriesBtn" aria-pressed="false" aria-controls="categoriesView">Categorías</button>
+      <button type="button" class="btn btn-ghost" id="tabMetricsBtn" aria-pressed="false" aria-controls="metricsView">Métricas</button>
     </div>
   </div>
 
@@ -601,6 +643,55 @@
 
     <div class="products-grid" id="categoriesGrid"></div>
     <div class="empty-state" id="categoriesEmptyState" style="display:none;">Aún no hay categorías. Se crean solas cuando guardas un producto con una categoría nueva.</div>
+  </div>
+
+  <div id="metricsView" style="display:none;">
+    <div class="admin-toolbar" style="padding-top:0;">
+      <h2>Métricas <span class="count">(del catálogo ya cargado, sin lecturas extra)</span></h2>
+    </div>
+
+    <div class="metric-grid" id="metricGrid" aria-live="polite"></div>
+
+    <div class="metric-panels">
+      <section class="metric-card" aria-labelledby="metCatTitle">
+        <h3 id="metCatTitle">Productos por categoría</h3>
+        <ul id="metricCategorias"></ul>
+      </section>
+
+      <section class="metric-card" aria-labelledby="metFotosTitle">
+        <h3 id="metFotosTitle">Por arreglar: fotos fuera de Cloudinary</h3>
+        <p class="metric-note" id="metricFotosNota"></p>
+        <ul id="metricFotos"></ul>
+      </section>
+    </div>
+
+    <div class="metric-panels" style="padding-top:14px;">
+      <section class="metric-card" aria-labelledby="metEstTitle">
+        <h3 id="metEstTitle">Estimador de consumo (aproximado)</h3>
+        <p class="metric-note"><strong>Estimación con tus datos de ejemplo; para el consumo real abre los enlaces de abajo.</strong> Cambia los números para ver qué pasaría con más o menos visitas.</p>
+        <div class="est-inputs">
+          <div><label for="estVisitas">Visitas por día</label><input type="number" id="estVisitas" class="field" min="0" step="1" inputmode="numeric" value="100"></div>
+          <div><label for="estPaginas">Páginas vistas por visita</label><input type="number" id="estPaginas" class="field" min="0" step="1" inputmode="numeric" value="4"></div>
+          <div><label for="estPedidos">Pedidos por día</label><input type="number" id="estPedidos" class="field" min="0" step="1" inputmode="numeric" value="3"></div>
+        </div>
+        <ul class="est-results" id="estResultados" aria-live="polite"></ul>
+        <p class="est-note">Supuestos: la tienda revisa Firestore ~1 vez por visita (el catálogo viene de catalog.json) y la página Categorías lee todas las categorías (se usa el 30 % de las visitas); los pedidos no escriben en Firestore (van a la hoja y a WhatsApp) y las ediciones del admin se ignoran; Cloudinary: hasta 12 fotos por página de ~60 KB (variantes optimizadas), 6 variantes por producto creadas una sola vez (después quedan en caché). 1 crédito de Cloudinary = 1 GB de ancho de banda, o 1.000 transformaciones, o 1 GB de almacenamiento. Correos: cuota de ~100 diarios del script.</p>
+      </section>
+    </div>
+
+    <div class="metric-panels" style="padding-top:14px;">
+      <section class="metric-card" aria-labelledby="metLinksTitle">
+        <h3 id="metLinksTitle">Enlaces rápidos</h3>
+        <ul class="metric-links">
+          <li><a href="https://console.firebase.google.com/project/shopymemes/firestore/usage" target="_blank" rel="noopener">Uso de Firestore (consola de Firebase)</a></li>
+          <li><a href="https://console.cloudinary.com/" target="_blank" rel="noopener">Uso de Cloudinary</a></li>
+          <li><a href="https://drive.google.com/" target="_blank" rel="noopener">Abre tu hoja 'Pedidos Shopymemes' en Google Drive</a></li>
+          <li><a href="https://search.google.com/search-console" target="_blank" rel="noopener">Google Search Console</a></li>
+          <li><a href="https://analytics.google.com/" target="_blank" rel="noopener">Google Analytics</a></li>
+        </ul>
+      </section>
+
+    </div>
   </div>
 </section>
 
@@ -870,6 +961,7 @@
     productsCache = snap.docs.map(d => d.data()).filter(p => !p.deleted).sort((a, b) => b.id - a.id);
     productCount.textContent = `(${productsCache.length})`;
     applyFilter();
+    if (metricsView.style.display !== 'none') renderMetricas();
   }
 
   function applyFilter() {
@@ -1174,24 +1266,81 @@
   const productsView = document.getElementById('productsView');
   const categoriesView = document.getElementById('categoriesView');
 
-  tabProductsBtn.addEventListener('click', () => {
-    tabProductsBtn.className = 'btn btn-dark';
-    tabCategoriesBtn.className = 'btn btn-ghost';
-    tabProductsBtn.setAttribute('aria-pressed', 'true');
-    tabCategoriesBtn.setAttribute('aria-pressed', 'false');
-    productsView.style.display = 'block';
-    categoriesView.style.display = 'none';
-  });
+  const tabMetricsBtn = document.getElementById('tabMetricsBtn');
+  const metricsView = document.getElementById('metricsView');
+  const PESTANAS = [[tabProductsBtn, productsView], [tabCategoriesBtn, categoriesView], [tabMetricsBtn, metricsView]];
 
+  // Solo una sección a la vez: el botón activo se ve oscuro y lleva aria-pressed="true"
+  function mostrarPestana(botonActivo) {
+    PESTANAS.forEach(([boton, vista]) => {
+      const activa = boton === botonActivo;
+      boton.className = activa ? 'btn btn-dark' : 'btn btn-ghost';
+      boton.setAttribute('aria-pressed', String(activa));
+      vista.style.display = activa ? 'block' : 'none';
+    });
+  }
+
+  tabProductsBtn.addEventListener('click', () => mostrarPestana(tabProductsBtn));
   tabCategoriesBtn.addEventListener('click', () => {
-    tabCategoriesBtn.className = 'btn btn-dark';
-    tabProductsBtn.className = 'btn btn-ghost';
-    tabCategoriesBtn.setAttribute('aria-pressed', 'true');
-    tabProductsBtn.setAttribute('aria-pressed', 'false');
-    categoriesView.style.display = 'block';
-    productsView.style.display = 'none';
+    mostrarPestana(tabCategoriesBtn);
     loadCategories();
   });
+  tabMetricsBtn.addEventListener('click', () => {
+    mostrarPestana(tabMetricsBtn);
+    renderMetricas();
+  });
+
+  // ---------- Estimador de consumo (solo cálculo local; ninguna lectura a Firestore) ----------
+  const ETIQUETA_ESTADO = { verde: '✓ Bien', ambar: '! Atención', rojo: '✕ Riesgo' };
+  const fmt = (n) => Number(n).toLocaleString('es-CO', { maximumFractionDigits: 2 });
+  function renderEstimador() {
+    const entrada = {
+      visitas: document.getElementById('estVisitas').value,
+      paginas: document.getElementById('estPaginas').value,
+      pedidos: document.getElementById('estPedidos').value
+    };
+    const r = estimarConsumo(entrada, { productos: productsCache.length, categorias: categoriesCache.length });
+    const fila = (nombre, l, detalle) => `
+      <li class="est-row">
+        <div class="est-head">
+          <span class="est-name">${escapeHtml(nombre)}</span>
+          <span class="est-chip ${l.estado}">${escapeHtml(ETIQUETA_ESTADO[l.estado])} · ${escapeHtml(fmt(l.pct))} %</span>
+        </div>
+        <div class="est-val">${escapeHtml(detalle)}</div>
+        ${l.consejo ? `<p class="est-adv">${escapeHtml(l.consejo)}</p>` : ''}
+      </li>`;
+    document.getElementById('estResultados').innerHTML = [
+      fila('Firestore: lecturas por día', r.firestoreLecturas, `≈ ${fmt(r.firestoreLecturas.valor)} de ${fmt(r.firestoreLecturas.limite)} gratis`),
+      fila('Firestore: escrituras por día', r.firestoreEscrituras, `${fmt(r.firestoreEscrituras.valor)} de ${fmt(r.firestoreEscrituras.limite)} gratis (los pedidos no escriben en Firestore)`),
+      fila('Cloudinary: créditos por mes', r.cloudinary, `≈ ${fmt(r.cloudinary.valor)} de ${fmt(r.cloudinary.limite)} gratis (≈ ${fmt(r.cloudinary.gbMes)} GB de ancho de banda + ${fmt(r.cloudinary.transformaciones)} transformaciones únicas)`),
+      fila('Correos de aviso por día', r.correos, `≈ ${fmt(r.correos.valor)} de ${fmt(r.correos.limite)} (cuota aproximada del script)`)
+    ].join('');
+  }
+  ['estVisitas', 'estPaginas', 'estPedidos'].forEach(id => document.getElementById(id).addEventListener('input', renderEstimador));
+
+  // ---------- Métricas: solo usan productsCache (ya cargado), sin lecturas nuevas a Firestore ----------
+  function renderMetricas() {
+    renderEstimador();
+    const m = calcularMetricasCatalogo(productsCache);
+    const ficha = (etiqueta, valor, clase = '') =>
+      `<div class="metric-tile ${clase}"><p class="metric-label">${escapeHtml(etiqueta)}</p><p class="metric-value">${escapeHtml(valor)}</p></div>`;
+    document.getElementById('metricGrid').innerHTML = [
+      ficha('Productos', m.total),
+      ficha('Agotados', m.agotados, m.agotados > 0 ? 'is-bad' : ''),
+      ficha(`Stock bajo (1 a ${m.umbralStockBajo})`, m.stockBajo, m.stockBajo > 0 ? 'is-warn' : ''),
+      ficha('En oferta', m.enOferta),
+      ficha('Fotos por arreglar', m.imagenesExternas, m.imagenesExternas > 0 ? 'is-warn' : '')
+    ].join('');
+    document.getElementById('metricCategorias').innerHTML = m.porCategoria.length
+      ? m.porCategoria.map(c => `<li>${escapeHtml(c.categoria)}: <strong>${c.cantidad}</strong></li>`).join('')
+      : '<li>Aún no hay productos.</li>';
+    document.getElementById('metricFotosNota').textContent = m.imagenesExternas === 0
+      ? 'Todas las fotos están en Cloudinary.'
+      : 'Estos productos usan una foto que no es de Cloudinary (por ejemplo placehold.co) o no tienen foto. Súbelas desde "Editar".';
+    document.getElementById('metricFotos').innerHTML = m.productosImagenExterna
+      .slice(0, 15).map(n => `<li>${escapeHtml(n)}</li>`).join('')
+      + (m.imagenesExternas > 15 ? `<li>…y ${m.imagenesExternas - 15} más</li>` : '');
+  }
 
   // ---------- Cuadrícula de categorías ----------
   const categoriesGrid = document.getElementById('categoriesGrid');

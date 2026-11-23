@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   LIMITS, escapeHtml, slugify, isValidImageUrl, validateProduct, validateCategory,
-  maxQtyFor, productCardHtml, isValidUpdatedAt, mergeProducts, isValidCatalog, pickNewerCatalog
+  PERSONALIZACION_TIPOS, maxQtyFor, productCardHtml, isValidUpdatedAt, mergeProducts, isValidCatalog, pickNewerCatalog
 } = require('../Public/shared.js');
 
 const validProduct = {
@@ -154,4 +154,240 @@ test('pickNewerCatalog elige la versión mayor, ignora lo inválido y devuelve n
   assert.equal(pickNewerCatalog(a, { version: 'x' }), a);
   assert.equal(pickNewerCatalog(null, undefined), null);
   assert.equal(pickNewerCatalog(a, { version: 5, products: [] }), a); // empate: gana el primero
+});
+
+test('validateProduct ignora personalizable y tipoPersonalizacion (ya no ligados a productos)', () => {
+  const { product, error } = validateProduct({ ...validProduct, personalizable: true, tipoPersonalizacion: 'camiseta' });
+  assert.equal(error, undefined);
+  assert.equal('personalizable' in product, false);
+  assert.equal('tipoPersonalizacion' in product, false);
+});
+
+test('PERSONALIZACION_TIPOS sigue exportado para validar ?tipo= del visor', () => {
+  assert.deepEqual([...PERSONALIZACION_TIPOS], ['taza', 'cojin', 'llavero']);
+});
+
+// ---------- imgUrl / imgSrcset: variantes optimizadas de Cloudinary (solo al mostrar) ----------
+const { imgUrl, imgSrcset } = require('../Public/shared.js');
+const CLD = 'https://res.cloudinary.com/m5ndbk0h/image/upload';
+
+test('imgUrl inserta f_auto,q_auto,c_limit,w_N justo después de /upload/', () => {
+  assert.equal(imgUrl(`${CLD}/v1790461007/abc.png`, 640), `${CLD}/f_auto,q_auto,c_limit,w_640/v1790461007/abc.png`);
+  assert.equal(imgUrl(`${CLD}/abc.png`, 320), `${CLD}/f_auto,q_auto,c_limit,w_320/abc.png`);
+});
+
+test('imgUrl respeta una transformación existente (la nuestra va antes) y no repite f_auto', () => {
+  assert.equal(imgUrl(`${CLD}/c_fill,w_200/v1/abc.png`, 800), `${CLD}/f_auto,q_auto,c_limit,w_800/c_fill,w_200/v1/abc.png`);
+  const ya = `${CLD}/f_auto,q_auto,w_300/v1/abc.png`;
+  assert.equal(imgUrl(ya, 800), ya);
+});
+
+test('imgUrl deja igual lo que no es Cloudinary y nunca lanza', () => {
+  for (const u of ['https://placehold.co/400x400', '/bananacat.png', 'data:image/png;base64,AAAA', 'http://res.cloudinary.com/x/image/upload/a.png',
+    'https://res.cloudinary.com/x/video/upload/a.mp4', 'https://res.cloudinary.com.evil.com/x/image/upload/a.png', 'basura']) {
+    assert.equal(imgUrl(u, 400), u);
+  }
+  assert.equal(imgUrl(null, 400), '');
+  assert.equal(imgUrl(undefined), '');
+  assert.equal(imgUrl(42, 400), '');
+  assert.equal(imgUrl({}, 400), '');
+});
+
+test('imgUrl acota el ancho a un entero razonable', () => {
+  assert.match(imgUrl(`${CLD}/a.png`, 99999), /w_2000\//);
+  assert.match(imgUrl(`${CLD}/a.png`, 99.6), /w_100\//);
+  assert.match(imgUrl(`${CLD}/a.png`, 'x'), /w_800\//);
+  assert.match(imgUrl(`${CLD}/a.png`), /w_800\//);
+  assert.match(imgUrl(`${CLD}/a.png`, 1), /w_16\//);
+});
+
+test('imgSrcset arma variantes para Cloudinary y devuelve vacío para el resto', () => {
+  const s = imgSrcset(`${CLD}/v1/a.png`, [320, 640]);
+  assert.equal(s, `${CLD}/f_auto,q_auto,c_limit,w_320/v1/a.png 320w, ${CLD}/f_auto,q_auto,c_limit,w_640/v1/a.png 640w`);
+  assert.equal(imgSrcset('https://placehold.co/400x400', [320, 640]), '');
+  assert.equal(imgSrcset(null, [320]), '');
+  assert.equal(imgSrcset(`${CLD}/a.png`, []), '');
+  assert.equal(imgSrcset(`${CLD}/a.png`), '', 'sin anchos no hay srcset');
+  assert.equal(imgSrcset(`${CLD}/f_auto,w_300/a.png`, [320, 640]), '', 'ya transformada: no se repite');
+});
+
+test('productCardHtml usa la variante optimizada con srcset, sizes y tamaño reservado', () => {
+  const html = productCardHtml({ id: 1, name: 'Taza', price: 1000, image: `${CLD}/v1/a.png`, stock: 2 });
+  assert.ok(html.includes(`src="${CLD}/f_auto,q_auto,c_limit,w_640/v1/a.png"`));
+  assert.match(html, /srcset="[^"]*w_320[^"]*320w, [^"]*w_640[^"]*640w"/);
+  assert.ok(!html.includes('480w') && !html.includes('800w'), 'solo 320 y 640');
+  assert.ok(html.includes(`data-orig="${CLD}/v1/a.png"`), 'guarda la URL original para el respaldo');
+  assert.match(html, /sizes="\(min-width: 992px\) 25vw, \(min-width: 768px\) 33vw, 50vw"/);
+  assert.match(html, /width="400" height="400"/);
+  assert.match(html, /loading="lazy"/);
+  assert.match(html, /decoding="async"/);
+});
+
+test('productCardHtml con imagen que no es Cloudinary queda como antes (sin srcset) y con prioridad opcional', () => {
+  const html = productCardHtml({ id: 1, name: 'Taza', price: 1000, image: 'https://placehold.co/400x400', stock: 2 });
+  assert.ok(html.includes('src="https://placehold.co/400x400"'));
+  assert.ok(!html.includes('srcset'));
+  const arriba = productCardHtml({ id: 1, name: 'Taza', price: 1000, image: 'https://placehold.co/400x400', stock: 2 }, { prioridad: true });
+  assert.match(arriba, /fetchpriority="high"/);
+  assert.ok(!arriba.includes('loading="lazy"'));
+});
+
+test('imgUrl e imgSrcset no tocan URLs con espacios', () => {
+  const u = `${CLD}/v1/mi foto.png`;
+  assert.equal(imgUrl(u, 400), u);
+  assert.equal(imgSrcset(u, [320, 640]), '');
+  assert.equal(imgUrl(`${CLD}/v1/a.png `, 400), `${CLD}/v1/a.png `);
+});
+
+test('productCardHtml escapa comillas dobles de la URL de la imagen', () => {
+  const html = productCardHtml({ id: 1, name: 'Taza', price: 1000, image: 'https://res.cloudinary.com/x/image/upload/a".png', stock: 2 });
+  assert.ok(!html.includes('a".png'));
+  assert.ok(html.includes('a&quot;.png'));
+});
+
+test('imgOrigAttr solo marca imágenes que imgUrl transforma', () => {
+  const { imgOrigAttr } = require('../Public/shared.js');
+  assert.equal(imgOrigAttr(`${CLD}/a.png`), ` data-orig="${CLD}/a.png"`);
+  assert.equal(imgOrigAttr('https://placehold.co/400'), '');
+  assert.equal(imgOrigAttr(null), '');
+  assert.equal(imgOrigAttr(`${CLD}/a"b.png`), ` data-orig="${CLD}/a&quot;b.png"`);
+});
+
+test('imgFallbackOriginal vuelve a la URL original una sola vez y quita srcset', () => {
+  const { imgFallbackOriginal } = require('../Public/shared.js');
+  const attrs = { srcset: 'x 320w' };
+  const img = {
+    tagName: 'IMG', src: `${CLD}/f_auto,w_640/a.png`, dataset: { orig: `${CLD}/a.png` },
+    removeAttribute(n) { delete attrs[n]; }
+  };
+  assert.equal(imgFallbackOriginal({ target: img }), true);
+  assert.equal(img.src, `${CLD}/a.png`);
+  assert.ok(!('srcset' in attrs));
+  img.src = 'otra';
+  assert.equal(imgFallbackOriginal({ target: img }), false, 'segunda falla: no vuelve a intentar');
+  assert.equal(img.src, 'otra');
+  assert.equal(imgFallbackOriginal({ target: { tagName: 'IMG', dataset: {} } }), false, 'sin data-orig no hace nada');
+  assert.equal(imgFallbackOriginal({ target: { tagName: 'DIV', dataset: { orig: 'x' } } }), false);
+  assert.equal(imgFallbackOriginal(null), false);
+});
+
+// ---------- calcularMetricasCatalogo (pestaña Métricas del admin) ----------
+const { calcularMetricasCatalogo } = require('../Public/shared.js');
+const cl = (n) => `https://res.cloudinary.com/m5ndbk0h/image/upload/v1/${n}.png`;
+
+test('calcularMetricasCatalogo con lista vacía o basura devuelve ceros', () => {
+  for (const entrada of [[], null, undefined, 'x']) {
+    const m = calcularMetricasCatalogo(entrada);
+    assert.equal(m.total, 0);
+    assert.equal(m.agotados, 0);
+    assert.equal(m.stockBajo, 0);
+    assert.equal(m.enOferta, 0);
+    assert.equal(m.imagenesExternas, 0);
+    assert.deepEqual(m.porCategoria, []);
+    assert.deepEqual(m.productosImagenExterna, []);
+  }
+});
+
+test('calcularMetricasCatalogo cuenta stock, ofertas y categorías', () => {
+  const m = calcularMetricasCatalogo([
+    { name: 'A', category: 'tazas', stock: 0, offer: false, image: cl('a') },
+    { name: 'B', category: 'tazas', stock: 1, offer: true, image: cl('b') },
+    { name: 'C', category: 'llaveros', stock: 3, offer: false, image: cl('c') },
+    { name: 'D', category: 'tazas', stock: 4, offer: true, image: cl('d') },
+    { name: 'E', stock: 10, image: cl('e') }
+  ]);
+  assert.equal(m.total, 5);
+  assert.equal(m.agotados, 1);
+  assert.equal(m.stockBajo, 2, 'stock de 1 a 3 (el mismo umbral del admin: <= 3, sin contar agotados)');
+  assert.equal(m.umbralStockBajo, 3);
+  assert.equal(m.enOferta, 2);
+  assert.deepEqual(m.porCategoria, [
+    { categoria: 'tazas', cantidad: 3 },
+    { categoria: 'llaveros', cantidad: 1 },
+    { categoria: 'Sin categoría', cantidad: 1 }
+  ]);
+  assert.equal(m.imagenesExternas, 0);
+});
+
+test('calcularMetricasCatalogo detecta imágenes fuera de Cloudinary (image o galería)', () => {
+  const m = calcularMetricasCatalogo([
+    { name: 'Externa', category: 'x', stock: 2, image: 'https://placehold.co/400x400' },
+    { name: 'Galería', category: 'x', stock: 2, image: cl('g'), images: [cl('g'), 'https://i.imgur.com/a.png'] },
+    { name: 'Sin foto', category: 'x', stock: 2, image: '' },
+    { name: 'Bien', category: 'x', stock: 2, image: cl('ok'), images: [cl('ok')] },
+    { name: 'Falsa', category: 'x', stock: 2, image: 'https://res.cloudinary.com.evil.com/a.png' }
+  ]);
+  assert.equal(m.imagenesExternas, 4);
+  assert.deepEqual(m.productosImagenExterna, ['Externa', 'Galería', 'Sin foto', 'Falsa']);
+});
+
+// ---------- estimarConsumo / estadoConsumo ----------
+const { estimarConsumo, estadoConsumo, CONSUMO_LIMITES } = require('../Public/shared.js');
+
+test('estadoConsumo: verde < 50, ámbar 50 a 80, rojo > 80', () => {
+  assert.equal(estadoConsumo(0), 'verde');
+  assert.equal(estadoConsumo(49.9), 'verde');
+  assert.equal(estadoConsumo(50), 'ambar');
+  assert.equal(estadoConsumo(80), 'ambar');
+  assert.equal(estadoConsumo(80.1), 'rojo');
+  assert.equal(estadoConsumo(400), 'rojo');
+});
+
+test('estimarConsumo con los datos de ejemplo da verde y escrituras en cero', () => {
+  const r = estimarConsumo({ visitas: 100, paginas: 4, pedidos: 3 }, { productos: 20, categorias: 5 });
+  assert.equal(r.firestoreLecturas.valor, Math.round(100 * (1 + 0.3 * 5)));
+  assert.equal(r.firestoreLecturas.limite, 50000);
+  assert.equal(r.firestoreLecturas.estado, 'verde');
+  assert.equal(r.firestoreLecturas.consejo, '');
+  assert.equal(r.firestoreEscrituras.valor, 0);
+  assert.equal(r.firestoreEscrituras.pct, 0);
+  assert.equal(r.correos.valor, 3);
+  assert.equal(r.correos.pct, 3);
+  assert.equal(r.cloudinary.fotosPorPagina, 12);
+  assert.equal(r.cloudinary.transformaciones, 120);
+  assert.equal(r.cloudinary.gbMes, 8.64, '100 visitas x 4 páginas x 12 fotos x 60 KB x 30 días');
+  assert.equal(r.cloudinary.estado, 'verde');
+});
+
+test('estimarConsumo con cero visitas: solo cuenta las transformaciones únicas de Cloudinary', () => {
+  const r = estimarConsumo({ visitas: 0, paginas: 4, pedidos: 0 }, { productos: 100, categorias: 5 });
+  assert.equal(r.firestoreLecturas.valor, 0);
+  assert.equal(r.cloudinary.gbMes, 0);
+  assert.equal(r.cloudinary.transformaciones, 600);
+  assert.equal(r.cloudinary.valor, 0.6);
+  assert.equal(r.correos.valor, 0);
+});
+
+test('estimarConsumo con muchas visitas pasa a ámbar o rojo y trae consejo', () => {
+  const ambar = estimarConsumo({ visitas: 14000, paginas: 1, pedidos: 60 }, { productos: 10, categorias: 5 });
+  assert.equal(ambar.firestoreLecturas.estado, 'ambar'); // 14000 x 2.5 = 35000 -> 70%
+  assert.ok(ambar.firestoreLecturas.consejo);
+  const enorme = estimarConsumo({ visitas: 1e12, paginas: 1e6, pedidos: 1e9 }, { productos: 1e6, categorias: 1e6 });
+  for (const k of ['firestoreLecturas', 'cloudinary', 'correos']) {
+    assert.equal(enorme[k].estado, 'rojo', k);
+    assert.ok(enorme[k].consejo.length > 20, `${k} debe traer consejo`);
+    assert.ok(Number.isFinite(enorme[k].valor) && Number.isFinite(enorme[k].pct));
+  }
+  assert.equal(enorme.firestoreEscrituras.estado, 'verde');
+  const limite = estimarConsumo({ visitas: 100, paginas: 1, pedidos: 60 }, {});
+  assert.equal(limite.correos.estado, 'ambar');
+  assert.ok(limite.correos.consejo);
+});
+
+test('estimarConsumo con catálogo vacío o basura trata todo como 0', () => {
+  for (const entrada of [[{}, {}], [null, null], [undefined, undefined], [{ visitas: NaN, paginas: -5, pedidos: 'x' }, { productos: -1, categorias: NaN }], ['x', 7]]) {
+    const r = estimarConsumo(...entrada);
+    assert.equal(r.firestoreLecturas.valor, 0);
+    assert.equal(r.cloudinary.valor, 0);
+    assert.equal(r.cloudinary.fotosPorPagina, 0);
+    assert.equal(r.correos.valor, 0);
+    assert.ok([r.firestoreLecturas, r.firestoreEscrituras, r.cloudinary, r.correos].every(l => l.estado === 'verde' && l.pct === 0));
+  }
+  const sinProductos = estimarConsumo({ visitas: 500, paginas: 4, pedidos: 1 }, { productos: 0, categorias: 0 });
+  assert.equal(sinProductos.cloudinary.gbMes, 0);
+  assert.equal(sinProductos.firestoreLecturas.valor, 500);
+});
+
+test('estimarConsumo expone los límites gratis usados', () => {
+  assert.deepEqual({ ...CONSUMO_LIMITES }, { lecturasDia: 50000, escriturasDia: 20000, creditosCloudinaryMes: 25, correosDia: 100 });
 });

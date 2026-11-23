@@ -68,6 +68,10 @@ function isValidUpdatedAt(v) {
 const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 // Recibe los valores tal cual vienen del formulario (strings) y devuelve { product } o { error }
+// Tipos del visor de personalización (personalizar.html?tipo=...). Ya no van ligados a los productos;
+// firestore.rules aún acepta los campos opcionales viejos, sin uso.
+const PERSONALIZACION_TIPOS = Object.freeze(['taza', 'cojin', 'llavero']);
+
 function validateProduct(raw) {
   const name = String(raw.name ?? '').trim();
   const description = String(raw.description ?? '').trim();
@@ -97,9 +101,8 @@ function validateProduct(raw) {
     return { error: `Cada imagen debe ser un link https válido de máximo ${LIMITS.imageUrl} caracteres` };
   }
 
-  return {
-    product: { name, price, oldPrice, images: [...images], description, category, offer: Boolean(raw.offer), stock }
-  };
+  const product = { name, price, oldPrice, images: [...images], description, category, offer: Boolean(raw.offer), stock };
+  return { product };
 }
 
 function validateCategory(raw, { isNew }) {
@@ -138,8 +141,62 @@ function priceHtml(p) {
   return `<p class="product-card-price card-text text-muted mb-2"><span class="product-card-price-now">${formatPrice(p.price)}</span></p>`;
 }
 
+// ---------- Imágenes: variantes optimizadas de Cloudinary (solo al MOSTRAR; los datos guardados no cambian) ----------
+// https://res.cloudinary.com/<nube>/image/upload/<resto>  ->  .../upload/f_auto,q_auto,c_limit,w_<ancho>/<resto>
+// f_auto = formato moderno (webp/avif), q_auto = calidad automática, c_limit = nunca agranda.
+// Cualquier otra URL (placehold.co, rutas relativas, data:, ya transformadas con f_auto) se devuelve igual.
+const CLOUDINARY_UPLOAD_RE = /^(https:\/\/res\.cloudinary\.com\/[A-Za-z0-9_-]+\/image\/upload\/)(.+)$/;
+
+function imgUrl(url, ancho = 800) {
+  try {
+    if (typeof url !== 'string') return '';
+    if (/\s/.test(url)) return url; // con espacios no se toca
+    const m = CLOUDINARY_UPLOAD_RE.exec(url);
+    if (!m) return url;
+    const primero = m[2].split('/')[0];
+    if (/(^|,)f_auto(,|$)/.test(primero)) return url; // ya viene optimizada
+    let w = Math.round(Number(ancho));
+    if (!Number.isFinite(w)) w = 800;
+    w = Math.min(2000, Math.max(16, w));
+    return `${m[1]}f_auto,q_auto,c_limit,w_${w}/${m[2]}`;
+  } catch (e) {
+    return typeof url === 'string' ? url : '';
+  }
+}
+
+// Atributo para volver a la URL original si la variante optimizada falla al cargar (ver imgFallbackOriginal)
+function imgOrigAttr(url) {
+  return typeof url === 'string' && imgUrl(url) !== url ? ` data-orig="${escapeHtml(url)}"` : '';
+}
+
+// Escucha global de errores de <img> (fase de captura): si la variante falla, se usa la URL original UNA vez
+function imgFallbackOriginal(ev) {
+  const img = ev && ev.target;
+  if (!img || img.tagName !== 'IMG' || !img.dataset || !img.dataset.orig || img.dataset.fallbackUsed) return false;
+  img.dataset.fallbackUsed = '1';
+  img.removeAttribute('srcset');
+  img.src = img.dataset.orig;
+  return true;
+}
+if (typeof document !== 'undefined') document.addEventListener('error', imgFallbackOriginal, true);
+
+// "url320 320w, url640 640w" para <img srcset>; '' si la URL no es de Cloudinary (o ya viene transformada)
+function imgSrcset(url, anchos) {
+  if (typeof url !== 'string' || !Array.isArray(anchos) || anchos.length === 0) return '';
+  const variantes = anchos.map(w => ({ w, u: imgUrl(url, w) }));
+  if (variantes.some(v => v.u === url)) return '';
+  return variantes.map(v => `${v.u} ${Math.round(Number(v.w))}w`).join(', ');
+}
+
 // Si stock es 0: sello "Agotado" en la foto y botón desactivado.
-function productCardHtml(p, { colClass = 'col-6 col-md-4 col-lg-3', extraBtnClass = '' } = {}) {
+// srcset + sizes de las tarjetas (vacío si la imagen no es de Cloudinary)
+function cardSrcset(image, sizes) {
+  const set = imgSrcset(image, [320, 640]);
+  return set ? ` srcset="${escapeHtml(set)}" sizes="${escapeHtml(sizes)}"` : '';
+}
+
+const SIZES_TARJETA = '(min-width: 992px) 25vw, (min-width: 768px) 33vw, 50vw';
+function productCardHtml(p, { colClass = 'col-6 col-md-4 col-lg-3', extraBtnClass = '', sizes = SIZES_TARJETA, prioridad = false } = {}) {
   const outOfStock = !(p.stock > 0);
   const name = escapeHtml(p.name);
   const href = `product.html?id=${encodeURIComponent(p.id)}`;
@@ -147,7 +204,7 @@ function productCardHtml(p, { colClass = 'col-6 col-md-4 col-lg-3', extraBtnClas
     <div class="${colClass} product-item" data-id="${escapeHtml(p.id)}" data-name="${name}" data-price="${escapeHtml(p.price)}">
       <div class="card product-card border-0 h-100">
         <a href="${href}" class="product-card-media position-relative d-block" tabindex="-1" aria-hidden="true">
-          <img src="${escapeHtml(p.image)}" class="card-img-top" alt="" loading="lazy">
+          <img src="${escapeHtml(imgUrl(p.image, 640))}"${cardSrcset(p.image, sizes)}${imgOrigAttr(p.image)} class="card-img-top" alt="" width="400" height="400" decoding="async" ${prioridad ? 'fetchpriority="high"' : 'loading="lazy"'}>
           ${outOfStock ? '<span class="out-of-stock-badge">Agotado</span>' : ''}
         </a>
         <div class="card-body px-0 d-flex flex-column">
@@ -163,6 +220,84 @@ function productCardHtml(p, { colClass = 'col-6 col-md-4 col-lg-3', extraBtnClas
       </div>
     </div>
   `;
+}
+
+// ---------- Métricas del catálogo (pestaña "Métricas" del admin; solo usa los productos ya cargados) ----------
+const UMBRAL_STOCK_BAJO = 3; // mismo umbral que el admin usa para el aviso amarillo de stock
+const FOTO_CLOUDINARY_RE = /^https:\/\/res\.cloudinary\.com\//;
+
+function calcularMetricasCatalogo(products) {
+  const lista = Array.isArray(products) ? products.filter(p => p && typeof p === 'object') : [];
+  const porCat = new Map();
+  const externos = [];
+  let agotados = 0, stockBajo = 0, enOferta = 0;
+  for (const p of lista) {
+    const stock = Number.isInteger(p.stock) ? p.stock : 0;
+    if (stock <= 0) agotados++;
+    else if (stock <= UMBRAL_STOCK_BAJO) stockBajo++;
+    if (p.offer === true) enOferta++;
+    const cat = typeof p.category === 'string' && p.category.trim() ? p.category : 'Sin categoría';
+    porCat.set(cat, (porCat.get(cat) || 0) + 1);
+    const fotos = [p.image, ...(Array.isArray(p.images) ? p.images : [])];
+    if (fotos.some(u => !(typeof u === 'string' && FOTO_CLOUDINARY_RE.test(u)))) externos.push(String(p.name ?? ''));
+  }
+  return {
+    total: lista.length, agotados, stockBajo, umbralStockBajo: UMBRAL_STOCK_BAJO, enOferta,
+    porCategoria: [...porCat].map(([categoria, cantidad]) => ({ categoria, cantidad })).sort((a, b) => b.cantidad - a.cantidad),
+    imagenesExternas: externos.length, productosImagenExterna: externos
+  };
+}
+
+// ---------- Estimador de consumo (pestaña "Métricas" del admin): ES UNA ESTIMACIÓN con supuestos, no una medición ----------
+// Supuestos (salen del código real de la tienda):
+//  - products.js lee catalog.json (0 lecturas) y revisa Firestore como mucho 1 vez cada 5 min por navegador: ~1 consulta (mínimo 1 lectura) por visita.
+//  - categorias.html lee la colección de categorías completa: 1 lectura por categoría, en ~30% de las visitas.
+//  - Los pedidos NO escriben en Firestore (van a la hoja de Google y a WhatsApp); las ediciones del admin se ignoran.
+//  - Cloudinary: ~12 fotos por página, 60 KB por foto (variantes optimizadas f_auto/q_auto de 320 a 640 px), 6 variantes distintas por producto, creadas una vez y guardadas en caché.
+const CONSUMO_SUPUESTOS = Object.freeze({
+  compartenCategorias: 0.3, fotosPorPaginaMax: 12, kbPorFoto: 60, variantesPorProducto: 6, diasMes: 30
+});
+const CONSUMO_LIMITES = Object.freeze({ lecturasDia: 50000, escriturasDia: 20000, creditosCloudinaryMes: 25, correosDia: 100 });
+
+function numeroSeguro(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 1e9) : 0;
+}
+
+function estadoConsumo(pct) {
+  return pct < 50 ? 'verde' : pct <= 80 ? 'ambar' : 'rojo';
+}
+
+function lineaConsumo(valor, limite, consejos) {
+  const pct = Math.round((valor / limite) * 1000) / 10;
+  const estado = estadoConsumo(pct);
+  return { valor, limite, pct, estado, consejo: estado === 'verde' ? '' : consejos };
+}
+
+function estimarConsumo(entrada, catalogo) {
+  const e = entrada && typeof entrada === 'object' ? entrada : {};
+  const c = catalogo && typeof catalogo === 'object' ? catalogo : {};
+  const visitas = numeroSeguro(e.visitas), paginas = numeroSeguro(e.paginas), pedidos = numeroSeguro(e.pedidos);
+  const productos = Math.floor(numeroSeguro(c.productos)), categorias = Math.floor(numeroSeguro(c.categorias));
+  const S = CONSUMO_SUPUESTOS, L = CONSUMO_LIMITES;
+
+  const lecturas = Math.round(visitas * (1 + S.compartenCategorias * categorias));
+  const fotosPorPagina = Math.min(S.fotosPorPaginaMax, productos);
+  const gbMes = (visitas * paginas * fotosPorPagina * S.kbPorFoto * S.diasMes) / 1e6;
+  const transformaciones = productos * S.variantesPorProducto;
+  const creditos = Math.round((gbMes + transformaciones / 1000) * 100) / 100;
+
+  return {
+    firestoreLecturas: lineaConsumo(lecturas, L.lecturasDia,
+      'Acércate al límite gratis: revisa que "npm run publicar" deje catalog.json al día y evita abrir la tienda en muchas pestañas; si sigue subiendo, considera el plan Blaze con presupuesto bajo.'),
+    firestoreEscrituras: lineaConsumo(0, L.escriturasDia, ''),
+    cloudinary: { ...lineaConsumo(creditos, L.creditosCloudinaryMes,
+      'Las fotos pesan mucho: sube fotos más pequeñas o revisa que se pidan las variantes optimizadas (f_auto, q_auto) y vigila el uso en Cloudinary.'),
+      gbMes: Math.round(gbMes * 100) / 100, transformaciones, fotosPorPagina },
+    correos: lineaConsumo(pedidos, L.correosDia,
+      'Con tantos pedidos al día los avisos por correo del script pueden pasar la cuota (~100 diarios); revisa la hoja directamente o usa otra cuenta para los avisos.'),
+    supuestos: S
+  };
 }
 
 // ---------- Catálogo: mezcla de la foto estática (catalog.json) con los cambios de Firestore ----------
@@ -197,8 +332,9 @@ function mergeProducts(base, changes, version = 0) {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    LIMITS, escapeHtml, formatPrice, slugify, isValidImageUrl, validateProduct, validateCategory,
-    maxQtyFor, priceHtml, productCardHtml, isValidUpdatedAt,
-    isValidCatalog, pickNewerCatalog, mergeProducts
+    LIMITS, PERSONALIZACION_TIPOS, escapeHtml, formatPrice, slugify, isValidImageUrl, validateProduct, validateCategory,
+    maxQtyFor, priceHtml, productCardHtml, imgUrl, imgSrcset, imgOrigAttr, imgFallbackOriginal, isValidUpdatedAt,
+    isValidCatalog, pickNewerCatalog, mergeProducts, calcularMetricasCatalogo,
+    estimarConsumo, estadoConsumo, CONSUMO_LIMITES, CONSUMO_SUPUESTOS
   };
 }

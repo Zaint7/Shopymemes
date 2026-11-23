@@ -116,7 +116,6 @@ input:focus-visible {
   height: 100%;
   object-fit: cover;
   border-radius: 0;
-  transition: transform 0.2s ease;
 }
 
 .product-card:hover .product-card-media img {
@@ -784,6 +783,58 @@ input:focus-visible {
 }
 
 /* ============================================= */
+/* VISOR DE PERSONALIZACIÓN (personalizar.html)    */
+/* Lienzo lógico 600x600 escalado por CSS          */
+/* ============================================= */
+.visor-lienzo-wrap {
+  max-width: 600px;
+  margin-inline: auto;
+  border: 1.5px solid #212529;
+  border-radius: 16px;
+  background: #f8f9fa;
+  overflow: hidden;
+}
+.visor-lienzo {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+}
+/* Solo con foto el lienzo captura gestos (JS); vacío deja que el dedo desplace la página */
+.visor-lienzo.con-foto {
+  touch-action: none;
+  cursor: grab;
+}
+.visor-lienzo.con-foto:active { cursor: grabbing; }
+.visor-lienzo.visor-ocupado { cursor: progress; opacity: 0.6; }
+.visor-etiqueta {
+  font-weight: 600;
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+  float: none;
+  width: auto;
+}
+.visor-controles {
+  display: flex;
+  gap: 8px;
+}
+.visor-ajuste {
+  min-width: 48px;
+  min-height: 48px;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+.visor-estado {
+  min-height: 1.5rem;
+  color: #842029;
+  font-weight: 600;
+}
+@media (prefers-reduced-motion: reduce) {
+  .visor-lienzo,
+  .visor-panel .progress-bar { transition: none; }
+}
+
+/* ============================================= */
 /* MOVIMIENTO REDUCIDO: sin animaciones decorativas */
 /* ============================================= */
 @media (prefers-reduced-motion: reduce) {
@@ -794,4 +845,139 @@ input:focus-visible {
   .cart-mobile-bar { transition: none; }
   .product-card:hover .product-card-media img,
   .cart-link:hover { transform: none; }
+}
+
+/* ============================================= */
+/* SECCIÓN "PERSONALIZA TU PRODUCTO" (home)        */
+/* ============================================= */
+.personaliza-seccion {
+  background: var(--surface-soft);
+  padding-block: clamp(2.5rem, 7vw, 4.5rem);
+}
+.personaliza-titulo {
+  font-weight: 800;
+  font-size: clamp(1.9rem, 5.5vw, 3.2rem);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  margin-bottom: 1rem;
+}
+.personaliza-subtitulo {
+  font-size: 1.1rem;
+  color: #495057;
+  max-width: 34rem;
+  margin-inline: auto;
+  margin-bottom: 1.5rem;
+}
+@media (min-width: 992px) {
+  .personaliza-subtitulo { margin-inline: 0; }
+}
+.personaliza-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 1.25rem;
+}
+@media (min-width: 992px) {
+  .personaliza-tabs { justify-content: flex-start; }
+}
+.personaliza-tab { min-height: 44px; min-width: 92px; font-weight: 600; }
+.personaliza-tab[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+.personaliza-estado { min-height: 1.5rem; margin: 0.75rem 0 0; color: #842029; font-weight: 600; }
+.personaliza-escena {
+  max-width: 520px;
+  margin-inline: auto;
+  perspective: 900px;
+  border: 1.5px solid var(--ink);
+  border-radius: 16px;
+  background: #fff;
+}
+.personaliza-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  border-radius: 16px;
+  transition: transform 0.15s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .personaliza-canvas { transition: none; transform: none !important; }
+}
+
+/* ============================================= */
+/* ANIMACIONES MEJORADAS: solo transform/opacity,  */
+/* sin librerías; todo se apaga con                */
+/* prefers-reduced-motion: reduce                  */
+/* ============================================= */
+
+/* Transición suave entre páginas (donde el navegador la soporte); la barra superior no parpadea */
+@view-transition { navigation: auto; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.18s; }
+/* Barra fija entre páginas: nombre propio, sin animación, y el hueco ya tiene su altura y color (no parpadea mientras layout.js la carga) */
+#navbar-placeholder { view-transition-name: site-nav; min-height: 64px; background: #212529; }
+::view-transition-group(site-nav),
+::view-transition-old(site-nav),
+::view-transition-new(site-nav) { animation: none; }
+
+/* Entrada del título principal (CSS puro: termina siempre visible, aunque falle el JS) */
+@keyframes entrada-hero {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .hero h1 { animation: entrada-hero 0.55s ease-out both; }
+}
+
+/* Aparición al hacer scroll: animaciones.js pone .js en <html> y .reveal en cada elemento.
+   Sin JS (o con movimiento reducido) nada queda oculto. */
+.js .reveal:not(.is-visible) { opacity: 0; transform: translateY(14px); }
+.js .reveal { transition: opacity 0.4s ease-out, transform 0.4s ease-out; }
+
+/* Tarjetas: se levantan al pasar el mouse (solo dispositivos con hover) y se hunden al presionar */
+.product-card-media { transition: transform 0.25s ease, box-shadow 0.25s ease; }
+.product-card-media img { transition: transform 0.35s ease; }
+@media (hover: hover) {
+  .product-card:hover .product-card-media { transform: translateY(-4px); box-shadow: 0 12px 24px rgba(0, 0, 0, 0.14); }
+  .product-card:hover .product-card-media img { transform: scale(1.04); }
+}
+@media (hover: none) {
+  .product-card:hover .product-card-media img { transform: none; }
+}
+.product-card:active .product-card-media { transform: scale(0.98); transition-duration: 0.1s; }
+.product-card .btn {
+  transition: transform 0.15s ease, color 0.15s ease-in-out, background-color 0.15s ease-in-out,
+    border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+.product-card .btn:active { transform: scale(0.97); }
+
+/* Esqueletos de carga con brillo que se desplaza */
+.skeleton { position: relative; overflow: hidden; background: #eceff1; border-radius: var(--radius-card); }
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent);
+  animation: skeleton-brillo 1.3s ease-in-out infinite;
+}
+@keyframes skeleton-brillo { to { transform: translateX(100%); } }
+.skeleton-media { aspect-ratio: var(--card-media-ratio); }
+.skeleton-line { height: 14px; border-radius: 7px; margin-top: 10px; }
+.skeleton-line.is-short { width: 55%; }
+.skeleton-btn { height: 31px; border-radius: var(--radius-pill); margin-top: 38px; } /* con esto el esqueleto mide casi lo mismo que la tarjeta real */
+
+/* Movimiento reducido: todo quieto e inmediato */
+@media (prefers-reduced-motion: reduce) {
+  @view-transition { navigation: none; }
+  .js .reveal:not(.is-visible) { opacity: 1; transform: none; }
+  .js .reveal,
+  .product-card-media,
+  .product-card-media img,
+  .product-card .btn { transition: none; }
+  .product-card:hover .product-card-media,
+  .product-card:hover .product-card-media img,
+  .product-card:active .product-card-media,
+  .product-card .btn:active { transform: none; box-shadow: none; }
+  .skeleton::after { animation: none; display: none; }
+  .cart-bump, .cart-shake { animation: none !important; }
 }
