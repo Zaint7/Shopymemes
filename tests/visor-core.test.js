@@ -102,3 +102,263 @@ test('fraccionOpaca cuenta los píxeles con alfa > 127', () => {
   assert.equal(fraccionOpaca(new Uint8ClampedArray(100)), 0);
   assert.equal(fraccionOpaca(new Uint8ClampedArray(0)), 0);
 });
+
+// ---------- Color del producto (taza y cojín) ----------
+const {
+  COLORES_PRODUCTO, COLORES_POR_TIPO, colorValido, colorPorDefecto, colorDeUrl, tintarPixeles
+} = require('../Public/visor-core.js');
+
+test('COLORES_POR_TIPO: taza y cojín con sus colores; el llavero no tiene', () => {
+  assert.deepEqual([...COLORES_POR_TIPO.taza], ['blanco', 'beige', 'hueso', 'negro', 'rojo']);
+  assert.deepEqual([...COLORES_POR_TIPO.cojin], ['blanco', 'beige', 'hueso', 'cafe', 'negro']);
+  assert.equal(COLORES_POR_TIPO.llavero, undefined);
+  for (const lista of [COLORES_POR_TIPO.taza, COLORES_POR_TIPO.cojin]) {
+    for (const id of lista) {
+      assert.match(id, /^[a-z]+$/);
+      assert.ok(COLORES_PRODUCTO[id].etiqueta && COLORES_PRODUCTO[id].rgb.length === 3, id);
+    }
+  }
+  assert.equal(COLORES_PRODUCTO.cafe.etiqueta, 'Café');
+});
+
+test('colorValido y colorPorDefecto', () => {
+  assert.equal(colorValido('taza', 'rojo'), true);
+  assert.equal(colorValido('cojin', 'rojo'), false);
+  assert.equal(colorValido('taza', 'cafe'), false);
+  assert.equal(colorValido('cojin', 'cafe'), true);
+  assert.equal(colorValido('llavero', 'blanco'), false);
+  for (const malo of ['', null, undefined, 'BLANCO', '__proto__', 'constructor', 5, {}, ['blanco']]) assert.equal(colorValido('taza', malo), false, String(malo));
+  assert.equal(colorPorDefecto('taza'), 'blanco');
+  assert.equal(colorPorDefecto('cojin'), 'blanco');
+  assert.equal(colorPorDefecto('llavero'), null);
+});
+
+test('colorDeUrl: valida contra el tipo; inválido = por defecto; acepta "café" y mayúsculas', () => {
+  assert.equal(colorDeUrl('taza', 'negro'), 'negro');
+  assert.equal(colorDeUrl('taza', 'NEGRO '), 'negro');
+  assert.equal(colorDeUrl('cojin', 'café'), 'cafe');
+  assert.equal(colorDeUrl('taza', 'cafe'), 'blanco');
+  assert.equal(colorDeUrl('taza', '<script>'), 'blanco');
+  assert.equal(colorDeUrl('taza', null), 'blanco');
+  assert.equal(colorDeUrl('llavero', 'negro'), null);
+});
+
+const px = (...rgba) => new Uint8ClampedArray(rgba);
+const CREMA = [238, 226, 203, 255];
+
+test('tintarPixeles: blanco quita el tono crema (más claro y menos saturado que hueso y beige), sin modificar la entrada', () => {
+  const sat = (c) => (Math.max(...c) - Math.min(...c)) / Math.max(...c);
+  const lum = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  const e = px(...CREMA, 120, 100, 90, 255);
+  const copia = new Uint8ClampedArray(e);
+  const blanco = [...tintarPixeles(e, 'blanco')].slice(0, 3);
+  const hueso = [...tintarPixeles(e, 'hueso')].slice(0, 3);
+  const beige = [...tintarPixeles(e, 'beige')].slice(0, 3);
+  assert.deepEqual([...e], [...copia], 'la entrada no cambia');
+  assert.ok(Math.min(...blanco) >= 238 && Math.max(...blanco) <= 255, 'la luz llega a un blanco casi neutro');
+  assert.ok(sat(blanco) < 0.03, 'sin tono crema');
+  assert.ok(sat(blanco) < sat(hueso) && sat(hueso) < sat(beige), 'blanco menos saturado que hueso y beige');
+  assert.ok(lum(blanco) > lum(hueso) && lum(hueso) > lum(beige), 'blanco más claro que hueso y beige');
+  assert.ok(hueso[0] - hueso[2] > blanco[0] - blanco[2] + 15, 'hueso es más cálido (amarillo) que blanco');
+  assert.deepEqual([...tintarPixeles(e, 'blanco')], [...tintarPixeles(e, 'blanco')], 'determinista');
+});
+
+test('tintarPixeles: el blanco conserva sombras y relieve', () => {
+  const luz = [...tintarPixeles(px(...CREMA), 'blanco')];
+  const sombra = [...tintarPixeles(px(210, 193, 162, 255), 'blanco')];
+  assert.ok(luz[0] + luz[1] + luz[2] > sombra[0] + sombra[1] + sombra[2] + 40);
+});
+
+test('tintarPixeles: conserva el alfa y lanza si el largo no es múltiplo de 4', () => {
+  const s = tintarPixeles(px(200, 190, 170, 77, 10, 10, 10, 0), 'blanco');
+  assert.equal(s[3], 77);
+  assert.equal(s[7], 0);
+  assert.throws(() => tintarPixeles(new Uint8ClampedArray(5), 'negro'), RangeError);
+  assert.deepEqual([...tintarPixeles(px(1, 2, 3, 4), 'inexistente')], [1, 2, 3, 4]);
+});
+
+test('tintarPixeles: negro oscurece, conserva relieve (luz > sombra) y brillos', () => {
+  const luz = [...tintarPixeles(px(...CREMA), 'negro')];
+  const sombra = [...tintarPixeles(px(150, 135, 110, 255), 'negro')];
+  assert.ok(luz[0] < 120 && luz[1] < 120 && luz[2] < 120, 'se ve oscuro');
+  assert.ok(luz[0] + luz[1] + luz[2] > sombra[0] + sombra[1] + sombra[2], 'la luz sigue más clara que la sombra');
+  const brillo = [...tintarPixeles(px(255, 255, 255, 255), 'negro')];
+  assert.ok(brillo[0] > luz[0] + 20, 'el brillo especular se conserva (no queda plano)');
+});
+
+test('tintarPixeles: la luz de la foto produce el color pedido; la sombra lo oscurece', () => {
+  const beige = [...tintarPixeles(px(...CREMA), 'beige')];
+  const rgb = COLORES_PRODUCTO.beige.rgb;
+  for (let i = 0; i < 3; i++) assert.ok(Math.abs(beige[i] - rgb[i]) <= 12, `canal ${i}: ${beige[i]} vs ${rgb[i]}`);
+  const oscuro = [...tintarPixeles(px(150, 135, 110, 255), 'beige')];
+  assert.ok(oscuro[0] < beige[0] && oscuro[1] < beige[1]);
+});
+
+test('tintarPixeles: blanco, hueso, beige, café, negro y rojo se ven claramente distintos', () => {
+  const base = px(...CREMA);
+  const col = {};
+  for (const id of ['blanco', 'hueso', 'beige', 'cafe', 'negro', 'rojo']) col[id] = [...tintarPixeles(base, id)].slice(0, 3);
+  const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+  const ids = Object.keys(col);
+  for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
+    assert.ok(dist(col[ids[i]], col[ids[j]]) >= 18, `${ids[i]} vs ${ids[j]}: ${dist(col[ids[i]], col[ids[j]]).toFixed(1)}`);
+  }
+  assert.ok(col.rojo[0] > col.rojo[1] * 2.5, 'el rojo es rojo');
+});
+
+test('tintarPixeles con máscara: fuera (0) no cambia, dentro (255) sí, y a medias mezcla', () => {
+  const e = px(...CREMA, ...CREMA, ...CREMA);
+  const s = tintarPixeles(e, 'negro', new Uint8Array([0, 255, 128]));
+  assert.deepEqual([...s].slice(0, 4), CREMA);
+  assert.ok(s[4] < 120);
+  assert.ok(s[8] > s[4] && s[8] < CREMA[0]);
+  assert.throws(() => tintarPixeles(e, 'negro', new Uint8Array(2)), RangeError);
+});
+
+test('colores oscuros marcados para imprimir sobre base blanca', () => {
+  for (const id of ['negro', 'cafe', 'rojo']) assert.equal(COLORES_PRODUCTO[id].oscuro, true, id);
+  for (const id of ['blanco', 'beige', 'hueso']) assert.equal(COLORES_PRODUCTO[id].oscuro, false, id);
+});
+
+test('como script clásico del navegador, visor-core.js deja los colores como propiedades globales (visor.js los lee de window)', () => {
+  const vm = require('node:vm');
+  const fs = require('node:fs');
+  const ctx = vm.createContext({});
+  vm.runInContext(fs.readFileSync(require('node:path').join(__dirname, '..', 'Public', 'visor-core.js'), 'utf8'), ctx);
+  for (const k of ['COLORES_PRODUCTO', 'COLORES_POR_TIPO', 'colorValido', 'colorPorDefecto', 'colorDeUrl', 'tintarPixeles']) {
+    assert.ok(vm.runInContext(`globalThis.${k} !== undefined`, ctx), k);
+  }
+});
+
+// ---------- Colores disponibles según el admin ----------
+const { coloresDisponibles, colorPorDefectoDisponible, validarColoresConfig, parsearConfigVisorRest } = require('../Public/visor-core.js');
+
+test('coloresDisponibles: respeta la lista del admin, el orden canónico y quita ids desconocidos o repetidos', () => {
+  const cfg = { colores: { taza: ['rojo', 'negro', 'cafe', 'zzz', 'negro', 5, null], cojin: ['hueso', 'blanco'] } };
+  assert.deepEqual([...coloresDisponibles('taza', cfg)], ['negro', 'rojo']);   // cafe no existe en taza
+  assert.deepEqual([...coloresDisponibles('cojin', cfg)], ['blanco', 'hueso']);
+  assert.deepEqual([...coloresDisponibles('llavero', cfg)], []);
+});
+
+test('coloresDisponibles: basura, listas vacías o sin ids conocidos, o falta el otro tipo -> todos los colores', () => {
+  const todosTaza = [...COLORES_POR_TIPO.taza];
+  for (const malo of [null, undefined, 5, 'x', [], {}, { colores: null }, { colores: 'x' }, { colores: [] }, { colores: { taza: 'rojo' } },
+    { colores: { taza: [] } }, { colores: { taza: ['nada', 'otro'] } }, { colores: { cojin: ['negro'] } }, { colores: { taza: {} } }]) {
+    assert.deepEqual([...coloresDisponibles('taza', malo)], todosTaza, JSON.stringify(malo));
+  }
+  assert.deepEqual([...coloresDisponibles('cojin', { colores: { taza: ['rojo'] } })], [...COLORES_POR_TIPO.cojin], 'solo el otro tipo configurado');
+  assert.deepEqual([...coloresDisponibles('taza', { colores: { __proto__: null, constructor: ['rojo'] } })], todosTaza);
+});
+
+test('colorPorDefectoDisponible: blanco si está, si no el primero; null si el tipo no tiene colores', () => {
+  assert.equal(colorPorDefectoDisponible('taza', ['negro', 'rojo']), 'negro');
+  assert.equal(colorPorDefectoDisponible('taza', ['rojo', 'blanco']), 'blanco');
+  assert.equal(colorPorDefectoDisponible('cojin', ['cafe']), 'cafe');
+  assert.equal(colorPorDefectoDisponible('taza', ['cafe']), 'blanco', 'ids que no valen para el tipo -> respaldo');
+  assert.equal(colorPorDefectoDisponible('taza', []), 'blanco');
+  assert.equal(colorPorDefectoDisponible('taza', null), 'blanco');
+  assert.equal(colorPorDefectoDisponible('llavero', ['negro']), null);
+});
+
+test('colorDeUrl con disponibles: un color desactivado vuelve al por defecto disponible', () => {
+  assert.equal(colorDeUrl('taza', 'rojo', ['negro', 'rojo']), 'rojo');
+  assert.equal(colorDeUrl('taza', 'blanco', ['negro', 'rojo']), 'negro');
+  assert.equal(colorDeUrl('taza', 'rojo', ['blanco', 'negro']), 'blanco');
+  assert.equal(colorDeUrl('taza', 'rojo'), 'rojo', 'sin lista: como antes');
+});
+
+test('validarColoresConfig: mínimo 1 por tipo, solo ids válidos del tipo, sin repetidos', () => {
+  assert.deepEqual(validarColoresConfig({ taza: ['rojo'], cojin: ['cafe', 'negro'] }), { ok: true });
+  assert.match(validarColoresConfig({ taza: [], cojin: ['negro'] }).error, /al menos un color para la taza/);
+  assert.match(validarColoresConfig({ taza: ['rojo'], cojin: [] }).error, /al menos un color para el cojín/);
+  assert.equal(validarColoresConfig({ taza: ['rojo'], cojin: ['rojo'] }).ok, false, 'rojo no existe en cojín');
+  assert.equal(validarColoresConfig({ taza: ['rojo', 'rojo'], cojin: ['negro'] }).ok, false);
+  for (const malo of [null, 'x', {}, { taza: 'rojo', cojin: 'negro' }]) assert.equal(validarColoresConfig(malo).ok, false);
+});
+
+test('parsearConfigVisorRest: lee el formato REST de Firestore y devuelve null si no tiene la forma', () => {
+  const doc = { fields: { colores: { mapValue: { fields: {
+    taza: { arrayValue: { values: [{ stringValue: 'rojo' }, { stringValue: 'negro' }, { integerValue: '3' }] } },
+    cojin: { arrayValue: {} } } } }, actualizado: { timestampValue: '2026-11-22T00:00:00Z' } } };
+  const r = parsearConfigVisorRest(doc);
+  assert.deepEqual([...r.colores.taza], ['rojo', 'negro']);
+  assert.deepEqual([...coloresDisponibles('cojin', r)], [...COLORES_POR_TIPO.cojin], 'lista vacía -> todos');
+  for (const malo of [null, undefined, {}, { fields: {} }, { fields: { colores: {} } }, 'x', 5]) assert.equal(parsearConfigVisorRest(malo), null);
+});
+
+// ---------- Solicitud de pedido personalizado por WhatsApp ----------
+const { mensajeSolicitudPersonalizada, urlWhatsAppSolicitud } = require('../Public/visor-core.js');
+
+test('mensajeSolicitudPersonalizada: producto, color y origen; sin datos personales', () => {
+  const m = mensajeSolicitudPersonalizada('taza', 'rojo', 'https://shopymemes.web.app');
+  assert.equal(m, 'Hola Shopymemes 👋 Me gustó cómo quedó mi diseño y quiero solicitar un pedido personalizado.\nProducto: Taza\nColor: Rojo\nDesde: https://shopymemes.web.app\nTe envío la imagen de mi diseño.');
+  assert.match(mensajeSolicitudPersonalizada('cojin', 'cafe'), /Producto: Cojín\nColor: Café\n/);
+});
+
+test('mensajeSolicitudPersonalizada: llavero y color ausente o inválido no llevan línea de color; origen opcional', () => {
+  const l = mensajeSolicitudPersonalizada('llavero', null);
+  assert.ok(!l.includes('Color:') && !l.includes('Desde:'));
+  assert.match(l, /Producto: Llavero\n/);
+  assert.ok(!mensajeSolicitudPersonalizada('llavero', 'rojo').includes('Color:'), 'el llavero no tiene colores');
+  assert.ok(!mensajeSolicitudPersonalizada('taza', 'cafe').includes('Color:'), 'color que no existe en la taza');
+  assert.ok(!mensajeSolicitudPersonalizada('taza', 'rojo', '<>\n').includes('<>'), 'origen raro se descarta');
+  assert.match(mensajeSolicitudPersonalizada('raro', 'rojo'), /Producto: Producto personalizado\n/);
+});
+
+test('urlWhatsAppSolicitud: codifica acentos, saltos de línea y emojis; valida el número', () => {
+  const msg = mensajeSolicitudPersonalizada('cojin', 'cafe');
+  const u = urlWhatsAppSolicitud('573242499086', msg);
+  assert.ok(u.startsWith('https://wa.me/573242499086?text='));
+  assert.ok(!/[\sáéíóúñ👋]/.test(u.slice(u.indexOf('?'))), 'todo codificado');
+  assert.ok(u.includes('%0A') && u.includes('%F0%9F%91%8B') && u.includes('Coj%C3%ADn'));
+  assert.equal(decodeURIComponent(u.split('text=')[1]), msg);
+  for (const malo of ['', null, undefined, '+57 324', 'abc', '123', '1'.repeat(20), 5]) assert.equal(urlWhatsAppSolicitud(malo, msg), null, String(malo));
+  assert.equal(decodeURIComponent(urlWhatsAppSolicitud('573242499086', 'a'.repeat(2000)).split('text=')[1]).length, 1500, 'largo acotado');
+});
+
+// ---------- Exportar el arte solo ----------
+const { nombreArchivo, cajaOpaca, limitarResolucion } = require('../Public/visor-core.js');
+
+test('nombreArchivo: diseño con color (si el tipo lo tiene) y arte recortado, siempre ASCII', () => {
+  assert.equal(nombreArchivo('taza', 'rojo', 'diseno'), 'shopymemes-taza-rojo-diseno.png');
+  assert.equal(nombreArchivo('cojin', 'cafe', 'diseno'), 'shopymemes-cojin-cafe-diseno.png');
+  assert.equal(nombreArchivo('llavero', null, 'diseno'), 'shopymemes-llavero-diseno.png');
+  assert.equal(nombreArchivo('llavero', 'rojo', 'diseno'), 'shopymemes-llavero-diseno.png', 'el llavero no tiene color');
+  assert.equal(nombreArchivo('taza', 'cafe', 'diseno'), 'shopymemes-taza-diseno.png', 'color que no existe en la taza');
+  assert.equal(nombreArchivo('taza', 'rojo', 'arte'), 'shopymemes-taza-arte-recortado.png');
+  assert.equal(nombreArchivo('cojin', null, 'arte'), 'shopymemes-cojin-arte-recortado.png');
+  for (const n of [nombreArchivo('Cojín ñ/../x', 'Café', 'diseno'), nombreArchivo('<>"\\ ', 'x', 'arte'), nombreArchivo(null, null, 'arte'), nombreArchivo('a'.repeat(100), null)]) {
+    assert.match(n, /^shopymemes-[a-z0-9-]+\.png$/, n);
+    assert.ok(!n.includes('..') && !n.includes('/'));
+  }
+  assert.equal(nombreArchivo(undefined, undefined, 'arte'), 'shopymemes-producto-arte-recortado.png');
+});
+
+test('cajaOpaca: caja del contenido visible con margen que respeta los bordes', () => {
+  const w = 10, h = 8, a = new Uint8Array(w * h);
+  for (let y = 3; y <= 4; y++) for (let x = 4; x <= 6; x++) a[y * w + x] = 255;
+  assert.deepEqual(cajaOpaca(a, w, h, 0), { x: 4, y: 3, w: 3, h: 2 });
+  assert.deepEqual(cajaOpaca(a, w, h, 1), { x: 3, y: 2, w: 5, h: 4 });
+  assert.deepEqual(cajaOpaca(a, w, h, 100), { x: 0, y: 0, w: 10, h: 8 }, 'el margen se recorta a los límites');
+  a[0] = 255;   // un píxel en la esquina: la caja crece hasta ahí
+  assert.deepEqual(cajaOpaca(a, w, h, 0), { x: 0, y: 0, w: 7, h: 5 });
+});
+
+test('cajaOpaca: alfa vacío, casi transparente o datos inválidos devuelven la imagen completa', () => {
+  const completa = { x: 0, y: 0, w: 6, h: 4 };
+  assert.deepEqual(cajaOpaca(new Uint8Array(24), 6, 4), completa);
+  assert.deepEqual(cajaOpaca(new Uint8Array(24).fill(5), 6, 4), completa, 'bajo el umbral');
+  assert.deepEqual(cajaOpaca(new Uint8Array(10), 6, 4), completa, 'largo que no cuadra');
+  assert.deepEqual(cajaOpaca(null, 6, 4), completa);
+  assert.deepEqual(cajaOpaca(new Uint8Array(24).fill(255), 6, 4), completa, 'todo opaco');
+});
+
+test('limitarResolucion: lado largo máximo 2000, proporción intacta, nunca agranda', () => {
+  assert.deepEqual(limitarResolucion(4000, 1000), { w: 2000, h: 500, escala: 0.5 });
+  assert.deepEqual(limitarResolucion(1000, 3000), { w: 667, h: 2000, escala: 2000 / 3000 });
+  assert.deepEqual(limitarResolucion(800, 600), { w: 800, h: 600, escala: 1 });
+  assert.deepEqual(limitarResolucion(2000, 2000), { w: 2000, h: 2000, escala: 1 });
+  assert.deepEqual(limitarResolucion(100000, 1), { w: 2000, h: 1, escala: 0.02 });
+  assert.deepEqual(limitarResolucion(0, 5), { w: 0, h: 0, escala: 1 });
+  assert.deepEqual(limitarResolucion(500, 500, 100), { w: 100, h: 100, escala: 0.2 });
+});

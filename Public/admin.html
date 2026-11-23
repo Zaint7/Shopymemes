@@ -8,6 +8,7 @@
   <link rel="icon" type="image/png" href="/favicon.ico">
   <script src="shared.js?v=11"></script>
   <script src="pedidos-config.js?v=1"></script>
+  <script src="visor-core.js?v=7"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
@@ -243,6 +244,17 @@
     .est-chip.rojo { background: #fee2e2; color: #991b1b; }
     .est-adv { margin: 6px 0 0; font-size: 0.9rem; }
     .est-note { margin: 6px 0 0; color: var(--muted); font-size: 0.85rem; }
+    .vc-grid { max-width: 1100px; margin: 0 auto; padding: 24px 24px 8px; display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+    .vc-card { background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 16px 18px; margin: 0; min-width: 0; }
+    .vc-card legend + * { clear: both; }
+    .vc-card legend { float: left; width: 100%; padding: 0; margin: 0 0 8px; font-size: 1.05rem; font-weight: 700; font-family: "Space Grotesk", system-ui, sans-serif; }
+    .vc-opcion { display: flex; align-items: center; gap: 12px; min-height: 44px; cursor: pointer; }
+    .vc-opcion input { width: 22px; height: 22px; flex: 0 0 auto; }
+    .vc-muestra { width: 26px; height: 26px; border-radius: 50%; border: 1px solid #6c757d; flex: 0 0 auto; }
+    .vc-acciones { max-width: 1100px; margin: 0 auto; padding: 8px 24px 32px; }
+    .vc-estado { margin: 10px 0 0; min-height: 1.3em; font-weight: 600; }
+    .vc-estado.is-error { color: #991b1b; }
+    .vc-estado.is-ok { color: #166534; }
     .ped-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 10px; }
     .ped-form > div { flex: 1 1 220px; }
     .ped-form label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 4px; }
@@ -634,6 +646,7 @@
       <button type="button" class="btn btn-dark" id="tabProductsBtn" aria-pressed="true" aria-controls="productsView">Productos</button>
       <button type="button" class="btn btn-ghost" id="tabCategoriesBtn" aria-pressed="false" aria-controls="categoriesView">Categorías</button>
       <button type="button" class="btn btn-ghost" id="tabMetricsBtn" aria-pressed="false" aria-controls="metricsView">Métricas</button>
+      <button type="button" class="btn btn-ghost" id="tabVisorBtn" aria-pressed="false" aria-controls="visorAdminView">Visor</button>
     </div>
   </div>
 
@@ -729,6 +742,18 @@
     </div>
   </div>
 </section>
+
+  <div id="visorAdminView" style="display:none;">
+    <div class="admin-toolbar" style="padding-top:0;">
+      <h2>Visor de personalización <span class="count">(colores disponibles para tus clientes)</span></h2>
+    </div>
+    <p class="metric-note" style="max-width:1100px;margin:0 auto;padding:0 24px;">Marca los colores que sí tienes en inventario. Los clientes solo verán esos colores en «Personaliza tu producto». Se necesita al menos uno por producto. Los cambios pueden tardar hasta 10 minutos en verse (el visor guarda la lista en el navegador).</p>
+    <div class="vc-grid" id="visorColoresGrid"></div>
+    <div class="vc-acciones">
+      <button type="button" class="btn btn-dark" id="visorColoresGuardar">Guardar</button>
+      <p class="vc-estado" id="visorColoresEstado" role="status" aria-live="polite"></p>
+    </div>
+  </div>
 
 <!-- ============================================= -->
 <!-- FORMULARIO: crear / editar                     -->
@@ -845,7 +870,7 @@
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
   import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut }
     from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
-  import { getFirestore, collection, getDocs, doc, setDoc, updateDoc, deleteDoc }
+  import { getFirestore, collection, getDocs, doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp }
     from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 
   const firebaseApp = initializeApp({
@@ -1303,7 +1328,9 @@
 
   const tabMetricsBtn = document.getElementById('tabMetricsBtn');
   const metricsView = document.getElementById('metricsView');
-  const PESTANAS = [[tabProductsBtn, productsView], [tabCategoriesBtn, categoriesView], [tabMetricsBtn, metricsView]];
+  const tabVisorBtn = document.getElementById('tabVisorBtn');
+  const visorAdminView = document.getElementById('visorAdminView');
+  const PESTANAS = [[tabProductsBtn, productsView], [tabCategoriesBtn, categoriesView], [tabMetricsBtn, metricsView], [tabVisorBtn, visorAdminView]];
 
   // Solo una sección a la vez: el botón activo se ve oscuro y lleva aria-pressed="true"
   function mostrarPestana(botonActivo) {
@@ -1323,6 +1350,74 @@
   tabMetricsBtn.addEventListener('click', () => {
     mostrarPestana(tabMetricsBtn);
     renderMetricas();
+  });
+  tabVisorBtn.addEventListener('click', () => {
+    mostrarPestana(tabVisorBtn);
+    cargarConfigVisorAdmin();
+  });
+
+  // ---------- Visor: colores disponibles (un solo documento: config/visor; UNA lectura al abrir la pestaña) ----------
+  const NOMBRES_TIPO_VISOR = { taza: 'Taza', cojin: 'Cojín' };
+  const visorColoresGrid = document.getElementById('visorColoresGrid');
+  const visorColoresEstado = document.getElementById('visorColoresEstado');
+  const visorColoresGuardar = document.getElementById('visorColoresGuardar');
+  let configVisorCargada = false;
+
+  function mensajeVisor(texto, clase) {
+    visorColoresEstado.textContent = texto || '';
+    visorColoresEstado.className = 'vc-estado' + (clase ? ' ' + clase : '');
+  }
+
+  // Dibuja una tarjeta por tipo; marcados = los ids activos (todos si no hay documento)
+  function dibujarColoresVisor(config) {
+    visorColoresGrid.innerHTML = Object.keys(COLORES_POR_TIPO).map(tipo => {
+      const activos = coloresDisponibles(tipo, config);
+      const opciones = COLORES_POR_TIPO[tipo].map(id => {
+        const c = COLORES_PRODUCTO[id];
+        return `<label class="vc-opcion"><input type="checkbox" data-tipo="${escapeHtml(tipo)}" value="${escapeHtml(id)}"${activos.includes(id) ? ' checked' : ''}>
+          <span class="vc-muestra" style="background:rgb(${c.rgb.join(',')})" aria-hidden="true"></span><span>${escapeHtml(c.etiqueta)}</span></label>`;
+      }).join('');
+      return `<fieldset class="vc-card"><legend>${escapeHtml(NOMBRES_TIPO_VISOR[tipo] || tipo)}</legend>${opciones}</fieldset>`;
+    }).join('');
+  }
+
+  async function cargarConfigVisorAdmin() {
+    if (configVisorCargada) return;   // no más lecturas al volver a la pestaña
+    configVisorCargada = true;
+    mensajeVisor('Cargando…');
+    try {
+      const snap = await getDoc(doc(db, 'config', 'visor'));
+      dibujarColoresVisor(snap.exists() ? snap.data() : null);
+      mensajeVisor(snap.exists() ? '' : 'Aún no has guardado una lista: todos los colores están disponibles.');
+    } catch (e) {
+      configVisorCargada = false;
+      dibujarColoresVisor(null);
+      mensajeVisor('No se pudo leer la configuración. Puedes guardar de todos modos; se reemplaza la anterior.', 'is-error');
+    }
+  }
+
+  function coloresMarcados() {
+    const r = {};
+    Object.keys(COLORES_POR_TIPO).forEach(t => {
+      r[t] = [...visorColoresGrid.querySelectorAll(`input[data-tipo="${t}"]:checked`)].map(i => i.value);
+    });
+    return r;
+  }
+
+  visorColoresGuardar.addEventListener('click', async () => {
+    const colores = coloresMarcados();
+    const v = validarColoresConfig(colores);
+    if (!v.ok) { mensajeVisor(v.error, 'is-error'); return; }
+    visorColoresGuardar.disabled = true;
+    mensajeVisor('Guardando…');
+    try {
+      await setDoc(doc(db, 'config', 'visor'), { colores, actualizado: serverTimestamp() });   // sin merge: reemplaza todo
+      mensajeVisor('Guardado. Los clientes verán estos colores (hasta 10 minutos en actualizarse).', 'is-ok');
+    } catch (e) {
+      mensajeVisor('No se pudo guardar. Revisa tu sesión y que las reglas de Firestore estén publicadas.', 'is-error');
+    } finally {
+      visorColoresGuardar.disabled = false;
+    }
   });
 
   // ---------- Estimador de consumo (solo cálculo local; ninguna lectura a Firestore) ----------

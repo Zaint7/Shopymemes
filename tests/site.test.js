@@ -190,7 +190,7 @@ test('los links que abren otra pestaña usan rel="noopener"', () => {
 
 test('personalizar.html carga los scripts del visor con versión y en el orden correcto', () => {
   const html = read('personalizar.html');
-  const orden = ['shared.js?v=11', 'products.js?v=4', 'cart.js', 'layout.js', 'visor-core.js?v=2', 'foto-archivo.js?v=1', 'visor.js?v=5', 'recorte.js?v=3', 'personalizar.js?v=4'];
+  const orden = ['shared.js?v=11', 'products.js?v=4', 'cart.js', 'layout.js', 'visor-core.js?v=7', 'foto-archivo.js?v=1', 'visor.js?v=8', 'recorte.js?v=3', 'personalizar.js?v=8'];
   let anterior = -1;
   for (const src of orden) {
     const i = html.indexOf(`src="${src}"`);
@@ -211,7 +211,7 @@ test('todas las páginas que cargan style.css piden la versión 5', () => {
   for (const page of pages) {
     const html = read(page);
     if (!html.includes('style.css')) continue;
-    assert.match(html, /style\.css\?v=7"/, `${page}: debe cargar style.css?v=7`);
+    assert.match(html, /style\.css\?v=9"/, `${page}: debe cargar style.css?v=9`);
     assert.ok(!html.includes('style.css?v=2'), `${page}: quedó style.css?v=2`);
   }
 });
@@ -307,8 +307,41 @@ test('visor.js: foto de plantilla con respaldo dibujado, multiply y sin ctx.filt
   assert.ok(!/\.roundRect\(/.test(js));
 });
 
-test('personalizar.html ya no ofrece color de taza (la foto es crema)', () => {
-  assert.ok(!read('personalizar.html').includes('visorColor'));
+test('personalizar.html: sin el viejo interruptor de color de taza; el selector nuevo es un radiogroup de muestras', () => {
+  const html = read('personalizar.html');
+  assert.ok(!/visorColorTaza|visorColorBlanca|visorColorHueso|name="visorColor"/.test(html), 'no se resucita el interruptor viejo');
+  assert.match(html, /<div[^>]*id="visorColores"[^>]*role="radiogroup"|<div[^>]*role="radiogroup"[^>]*id="visorColores"/);
+  assert.ok(html.includes('Color del producto') && html.includes('id="visorColorNombre"'));
+  assert.match(html, /id="visorColorWrap"[^>]*class="[^"]*d-none|class="[^"]*d-none[^"]*"[^>]*id="visorColorWrap"/, 'oculto por defecto (el llavero no lo muestra)');
+  assert.ok(html.includes('En colores oscuros la estampa se imprime sobre base blanca.'));
+  assert.ok(html.indexOf('data-accion="rot-der"') < html.indexOf('id="visorColorWrap"'), 'debajo de Ajustar foto');
+});
+
+test('personalizar.js: muestras con role=radio, aria-checked, aria-label, flechas, ?color= validado y sin llavero', () => {
+  const js = read('personalizar.js');
+  assert.ok(js.includes("setAttribute('role', 'radio')") && js.includes("'aria-checked'") && js.includes("'aria-label', c.etiqueta"));
+  for (const k of ['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'Home', 'End']) assert.ok(js.includes(`'${k}'`), k);
+  assert.ok(js.includes("colorDeUrl(tipo, new URLSearchParams(window.location.search).get('color'), lista)"));
+  assert.ok(js.includes('colorValido(t, colorActual)'), 'los enlaces de tipo conservan el color solo si es válido');
+  assert.ok(js.includes('if (!lista.length) return;') && js.includes('if (COLORES_POR_TIPO[tipo]) cargarConfigVisor()'), 'sin lista (llavero) no se muestra');
+  assert.ok(js.includes('visor.setColor(id)'));
+  const css = read('style.css');
+  assert.match(css, /\.visor-muestra \{[^}]*width: 44px;[^}]*height: 44px/);
+  assert.match(css, /\.visor-muestra\[aria-checked="true"\] \{[^}]*box-shadow/);
+});
+
+test('visor.js: setColor sin romper foto/zoom, tiñe en caché, imprime sobre base blanca en colores oscuros', () => {
+  const js = read('visor.js');
+  assert.ok(js.includes('setColor(id)') && js.includes('tintarPixeles(') && js.includes('estado.tenidas[id]'));
+  assert.ok(js.includes('SILUETA_TAZA_1000') && js.includes('SILUETA_COJIN'));
+  assert.ok(js.includes('globalAlpha = oscuro ? 0.95 : 1'));
+  assert.ok(!/COLORES_TAZA|setColorTaza/.test(js));
+  assert.ok(!/ctx\.filter|\.filter\s*=|\.roundRect\(/.test(js));
+  const sil = js.match(/const SILUETA_TAZA_1000 = (\[\[\[.*?\]\]\]);/);
+  assert.ok(sil, 'silueta de la taza');
+  const polis = JSON.parse(sil[1]);
+  assert.equal(polis.length, 2, 'contorno exterior + hueco del asa');
+  assert.ok(polis[0].length >= 40 && polis[1].length >= 10);
 });
 
 test('visor.js: el llavero usa capas en caché (sombra, acrílico, herraje) y no ctx.filter', () => {
@@ -442,3 +475,82 @@ test('admin.html: tarjeta Pedidos y ventas con clave en sessionStorage (nunca lo
   assert.ok(!/ADMIN_TOKEN|[0-9a-f]{32}/i.test(html), 'ninguna clave en el HTML');
 });
 
+
+test('firestore.rules: config/visor es de lectura pública, escritura solo del admin y validada contra COLORES_POR_TIPO', () => {
+  const rules = fs.readFileSync(path.join(ROOT, 'firestore.rules'), 'utf8');
+  const { COLORES_POR_TIPO } = require('../Public/visor-core.js');
+  assert.match(rules, /match \/config\/visor \{[^}]*allow read: if true;[^}]*allow create, update: if isAdmin\(\) && validVisorConfig\(request\.resource\.data\);[^}]*allow delete: if false;/s);
+  assert.ok(!/match \/config\/\{/.test(rules), 'solo config/visor, no toda la colección config');
+  assert.ok(rules.includes("d.keys().hasOnly(['colores', 'actualizado'])") && rules.includes('d.actualizado == request.time'));
+  assert.ok(rules.includes("d.colores.keys().hasOnly(['taza', 'cojin'])"));
+  assert.ok(rules.includes('lista.size() >= 1 && lista.size() <= 5 && lista.hasOnly(permitidos)'));
+  for (const tipo of ['taza', 'cojin']) {
+    const m = rules.match(new RegExp(`validColoresTipo\\(d\\.colores\\.${tipo}, (\\[[^\\]]*\\])\\)`));
+    assert.ok(m, `regla de ${tipo}`);
+    assert.deepEqual(JSON.parse(m[1].replace(/'/g, '"')), [...COLORES_POR_TIPO[tipo]], `ids de ${tipo} iguales a COLORES_POR_TIPO`);
+  }
+  assert.ok(rules.includes("(d.get('personalizable', false) == false"), 'sigue la regla opcional de personalizable');
+  // la regla de admin es la misma que la de productos
+  assert.ok(/match \/products\/\{productId\} \{[^}]*isAdmin\(\)/s.test(rules));
+});
+
+test('personalizar.js: config de colores por REST (sin SDK), una lectura, caché 10 min en localStorage, 3 s y respaldo a todos', () => {
+  const js = read('personalizar.js');
+  assert.ok(js.includes('https://firestore.googleapis.com/v1/projects/shopymemes/databases/(default)/documents/config/visor'));
+  assert.ok(js.includes('CONFIG_VIGENCIA_MS = 10 * 60 * 1000') && js.includes('CONFIG_TIMEOUT_MS = 3000') && js.includes('AbortController'));
+  assert.ok(js.includes('localStorage.getItem(CLAVE_CONFIG)') && js.includes('localStorage.setItem(CLAVE_CONFIG'));
+  assert.ok(!/gstatic\.com\/firebasejs|import\(/.test(js), 'no carga el SDK de Firebase');
+  assert.ok(js.includes('coloresDisponibles(tipo, config)') && js.includes('colorPorDefectoDisponible(tipo, lista)'));
+  assert.ok(/catch \(e\) \{\s*return null;/.test(js), 'cualquier error -> null -> todos los colores');
+});
+
+test('admin.html: pestaña Visor (aria como las demás), un getDoc, setDoc sin merge, validación y todo escapado', () => {
+  const html = read('admin.html');
+  assert.ok(html.includes('id="tabVisorBtn" aria-pressed="false" aria-controls="visorAdminView"'));
+  assert.ok(html.includes('[tabVisorBtn, visorAdminView]'), 'entra en PESTANAS (aria-pressed y visibilidad)');
+  assert.ok(html.includes('src="visor-core.js?v=7"'), 'usa las funciones puras del visor');
+  const bloque = html.slice(html.indexOf('// ---------- Visor: colores disponibles'), html.indexOf('// ---------- Estimador de consumo'));
+  assert.equal((bloque.match(/getDoc\(/g) || []).length, 1, 'una sola lectura');
+  assert.ok(bloque.includes('if (configVisorCargada) return;'), 'no relee al volver a la pestaña');
+  assert.ok(bloque.includes("setDoc(doc(db, 'config', 'visor'), { colores, actualizado: serverTimestamp() })") && !/merge/.test(bloque.replace(/sin merge/g, '')));
+  assert.ok(bloque.includes('validarColoresConfig(colores)') && bloque.includes('mensajeVisor(v.error'));
+  assert.ok(bloque.includes('escapeHtml(c.etiqueta)') && bloque.includes('escapeHtml(id)') && bloque.includes('escapeHtml(tipo)'));
+  assert.ok(html.includes('id="visorColoresEstado" role="status" aria-live="polite"'));
+  assert.ok(/getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp/.test(html));
+});
+
+test('personalizar: botón Solicitar pedido personalizado (WhatsApp), con pista, privacidad y nota aria-live; Web Share con archivos y respaldo', () => {
+  const html = read('personalizar.html');
+  const js = read('personalizar.js');
+  assert.match(html, /id="visorSolicitar" disabled/);
+  assert.ok(html.includes('Solicitar pedido personalizado') && html.includes('Sube una foto para poder solicitar tu pedido.'));
+  assert.ok(html.includes('Tu foto no se sube a ningún servidor: solo se envía si tú la adjuntas en WhatsApp.'));
+  assert.ok(html.includes('id="visorSolicitarNota" role="status" aria-live="polite"'));
+  assert.ok(html.indexOf('id="visorSolicitar"') < html.indexOf('id="visorDescargar"'), 'el principal va primero');
+  assert.ok(html.includes('src="pedidos-config.js?v=1"') && html.indexOf('pedidos-config.js') < html.indexOf('personalizar.js?v='));
+  assert.ok(js.includes('navigator.canShare({ files: lista })') && js.includes('navigator.share({ files: lista, text: mensajeWa })'));
+  assert.ok(js.includes('[archivos.diseno, archivos.arte].filter(Boolean)'), 'comparte el diseño y el arte');
+  assert.ok(js.includes("e.name === 'AbortError'"), 'cancelar no es un error');
+  assert.ok(js.includes('Se descargaron tu diseño y tu foto recortada: adjúntalos en el chat de WhatsApp.'));
+  assert.ok(js.includes("rel = 'noopener noreferrer'") && js.includes('urlWhatsAppSolicitud(') && js.includes('PEDIDOS_CONFIG.whatsapp'));
+  assert.ok(js.includes('visor.exportarPNG()') && js.includes('visor.exportarArte()'));
+  assert.ok(!/gtag|dataLayer|analytics/i.test(js), 'sin acoplar analítica');
+  const css = read('style.css');
+  assert.match(css, /\.visor-solicitar \{[^}]*background: #0b6b3a;[^}]*color: #fff;[^}]*width: 100%/);
+});
+
+test('descarga de 2 archivos: diseño con producto + arte solo, con nombres, nota aria-live y ayuda honesta', () => {
+  const html = read('personalizar.html');
+  const js = read('personalizar.js');
+  const vjs = read('visor.js');
+  assert.ok(html.includes('Descargar diseño + foto'));
+  assert.ok(html.includes('id="visorDescargaNota" role="status" aria-live="polite"') && html.includes('id="visorArteAyuda"'));
+  assert.ok(js.includes('Se descargan 2 archivos: el diseño con el producto y tu foto recortada. Si el navegador pide permiso para varias descargas, acéptalo.'));
+  assert.ok(js.includes('setTimeout(() => descargarArchivo(arte.blob, arte.nombre), 400)'), 'el segundo archivo sale ~400 ms después');
+  assert.ok(js.includes("nombreArchivo(tipo, colorActual, 'diseno')") && js.includes("nombreArchivo(tipo, colorActual, 'arte')"));
+  assert.ok(js.includes('El segundo archivo es tu foto tal como la subiste') && js.includes('El segundo archivo es tu sujeto recortado, con fondo transparente.'));
+  assert.ok(/exportarArte\(\) \{/.test(vjs) && vjs.includes('cajaOpaca(') && vjs.includes('limitarResolucion(') && vjs.includes('getModo()'));
+  assert.ok(/exportarPNG\(\) \{\s*visor\.render\(\);/.test(vjs), 'exportarPNG sigue dibujando al instante');
+  assert.ok(!/estado\.foto\./.test(vjs.slice(vjs.indexOf('exportarArte() {'), vjs.indexOf('destruir() {'))), 'el arte no lleva zoom, giro ni posición');
+  assert.ok(vjs.includes('temp.width = 0') && vjs.includes('fin.width = 0'), 'libera los lienzos temporales');
+});

@@ -67,6 +67,30 @@ service cloud.firestore {
         && isImageUrl(d.image);
     }
 
+    // Colores disponibles del visor de personalización (los ids deben coincidir con COLORES_POR_TIPO en
+    // Public/visor-core.js; npm test lo verifica). Una lista de 1 a 5 colores por tipo, sin otros campos.
+    function validColoresTipo(lista, permitidos) {
+      return lista is list && lista.size() >= 1 && lista.size() <= 5 && lista.hasOnly(permitidos);
+    }
+
+    function validVisorConfig(d) {
+      return d.keys().hasOnly(['colores', 'actualizado'])
+        && d.keys().hasAll(['colores', 'actualizado'])
+        && d.actualizado == request.time
+        && d.colores is map
+        && d.colores.keys().hasOnly(['taza', 'cojin'])
+        && d.colores.keys().hasAll(['taza', 'cojin'])
+        && validColoresTipo(d.colores.taza, ['blanco', 'beige', 'hueso', 'negro', 'rojo'])
+        && validColoresTipo(d.colores.cojin, ['blanco', 'beige', 'hueso', 'cafe', 'negro']);
+    }
+
+    // Solo ESTE documento es público (lectura); solo el admin lo escribe. No se puede borrar.
+    match /config/visor {
+      allow read: if true;
+      allow create, update: if isAdmin() && validVisorConfig(request.resource.data);
+      allow delete: if false;
+    }
+
     // Cualquiera puede ver el catálogo; solo el admin puede cambiarlo
     match /products/{productId} {
       allow read: if true;

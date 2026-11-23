@@ -11,11 +11,10 @@
   const core = (typeof module !== 'undefined' && module.exports && typeof require === 'function')
     ? require('./visor-core.js')
     : root;
-  const { initialScale, clampZoom, mugColumnScale } = core;
+  const { initialScale, clampZoom, mugColumnScale, COLORES_PRODUCTO, colorValido, colorPorDefecto, tintarPixeles, cajaOpaca, limitarResolucion } = core;
 
   const LIENZO = 600;
   const ANCHO_COLUMNA = 2;
-  const COLORES_TAZA = { blanca: '#ffffff', hueso: '#f1e9d8' };
 
   // Las fotos de plantilla miden 1000x1000 y se escalan al lienzo de 600x600
   const K_PLANTILLA = LIENZO / 1000;
@@ -29,6 +28,10 @@
   // Silueta real del cojín (tela crema), sacada de la foto con GrabCut y simplificada a un polígono; ya va
   // ensanchada ~2 px (la máscara salía justa) para que no asome tela sin imprimir. Se recorta el arte con este contorno.
   const SILUETA_COJIN_1000 = [[878,170],[872,166],[842,170],[753,195],[669,207],[625,217],[519,221],[493,217],[430,219],[424,216],[387,216],[371,211],[272,198],[244,192],[194,173],[169,168],[155,169],[147,179],[148,212],[160,261],[172,289],[174,320],[183,348],[183,372],[190,396],[194,454],[198,467],[198,503],[203,521],[199,549],[201,619],[195,645],[195,671],[183,709],[181,755],[173,766],[157,806],[154,834],[140,840],[124,857],[118,869],[118,880],[128,886],[167,885],[198,879],[285,878],[378,867],[541,869],[581,873],[637,871],[744,879],[860,876],[898,881],[907,878],[911,874],[911,861],[869,787],[842,700],[837,547],[842,420],[838,418],[841,373],[845,369],[847,322],[851,317],[854,290],[882,199],[882,177]];
+  // Silueta de la taza (cuerpo + asa, coordenadas de la foto de 1000x1000): el primer polígono es el contorno exterior y el
+  // segundo es el hueco del asa (se rellena con "evenodd"). Sacada con GrabCut + ajuste a mano del hueco. Sirve de máscara
+  // para teñir solo la taza (la foto no trae canal alfa).
+  const SILUETA_TAZA_1000 = [[[261,284],[257,294],[257,437],[262,794],[265,832],[273,848],[282,855],[306,866],[347,876],[396,883],[456,887],[560,886],[568,884],[583,884],[590,882],[611,881],[657,874],[680,868],[696,862],[715,851],[721,845],[724,840],[728,826],[731,775],[735,769],[747,764],[760,764],[776,767],[803,766],[808,768],[815,768],[844,760],[862,752],[874,744],[893,725],[899,715],[910,702],[923,667],[924,652],[932,638],[934,601],[939,591],[942,577],[942,518],[934,472],[921,431],[911,411],[899,393],[881,375],[867,365],[848,356],[833,351],[817,348],[782,348],[746,356],[736,355],[732,350],[732,291],[730,286],[726,282],[718,278],[685,271],[613,265],[562,263],[420,263],[408,267],[348,267],[312,270],[273,277]],[[803,392],[775,397],[753,412],[733,433],[733,679],[752,699],[774,710],[798,715],[810,712],[821,707],[841,691],[865,664],[880,630],[890,590],[893,547],[890,494],[884,464],[867,429],[847,402],[831,394]]];
   const QUAD_COJIN = QUAD_COJIN_1000.map(([x, y]) => [x * K_PLANTILLA, y * K_PLANTILLA]);
   const SILUETA_COJIN = SILUETA_COJIN_1000.map(([x, y]) => [x * K_PLANTILLA, y * K_PLANTILLA]);
 
@@ -141,6 +144,68 @@
     return curvo;
   }
 
+  // ---------- Color del producto: la foto de plantilla se tiñe solo dentro de la silueta ----------
+
+  function hexDeColor(id) {
+    const c = COLORES_PRODUCTO[id];
+    return '#' + c.rgb.map(v => v.toString(16).padStart(2, '0')).join('');
+  }
+
+  // Máscara 0-255 (un valor por píxel del lienzo de 600x600) de la silueta del objeto, con bordes suaves
+  // y un poco erosionada para que no se tiña el fondo. Se calcula una vez por visor.
+  function construirMascaraObjeto(tipo) {
+    const c = document.createElement('canvas');
+    c.width = LIENZO;
+    c.height = LIENZO;
+    const mc = c.getContext('2d');
+    const trazo = () => {
+      mc.beginPath();
+      if (tipo === 'taza') {
+        SILUETA_TAZA_1000.forEach(poli => {
+          poli.forEach(([x, y], i) => (i ? mc.lineTo(x * K_PLANTILLA, y * K_PLANTILLA) : mc.moveTo(x * K_PLANTILLA, y * K_PLANTILLA)));
+          mc.closePath();
+        });
+      } else {
+        SILUETA_COJIN.forEach(([x, y], i) => (i ? mc.lineTo(x, y) : mc.moveTo(x, y)));
+        mc.closePath();
+      }
+    };
+    mc.fillStyle = '#fff';
+    trazo();
+    mc.fill('evenodd');
+    mc.globalCompositeOperation = 'destination-out';
+    mc.lineJoin = 'round';
+    mc.lineWidth = tipo === 'taza' ? 0.8 : 1.5;   // la silueta del cojín ya viene ensanchada ~2 px; la de la taza ya incluye un margen
+    trazo();
+    mc.stroke();
+    const d = mc.getImageData(0, 0, LIENZO, LIENZO).data;
+    const m = new Uint8Array(LIENZO * LIENZO);
+    for (let i = 0; i < m.length; i++) m[i] = d[i * 4 + 3];
+    c.width = 0;
+    c.height = 0;
+    return m;
+  }
+
+  // Foto de plantilla con el color elegido (el blanco también se calcula: le quita el tono crema a la foto). Se calcula la primera vez y queda en caché.
+  function plantillaTenida(estado) {
+    const id = estado.color;
+    if (!estado.plantilla || !id) return estado.plantilla;
+    if (estado.tenidas[id]) return estado.tenidas[id];
+    if (!estado.mascara) estado.mascara = construirMascaraObjeto(estado.tipo);
+    const c = document.createElement('canvas');
+    c.width = LIENZO;
+    c.height = LIENZO;
+    const cx = c.getContext('2d');
+    cx.drawImage(estado.plantilla, 0, 0);
+    const img = cx.getImageData(0, 0, LIENZO, LIENZO);
+    img.data.set(tintarPixeles(img.data, id, estado.mascara));
+    cx.putImageData(img, 0, 0);
+    estado.tenidas[id] = c;
+    return c;
+  }
+
+  const esOscuro = (estado) => !!(estado.color && COLORES_PRODUCTO[estado.color] && COLORES_PRODUCTO[estado.color].oscuro);
+
   // Imprime el arte (lienzo `a` de 600x600 ya dibujado) sobre la foto de la plantilla: "multiply" con la
   // foto (conserva el brillo y el tinte crema de la cerámica o la tela) y un acabado final (decorar).
   // Se hace en una capa aparte para que el multiply no toque la foto donde no hay arte.
@@ -153,18 +218,23 @@
     bc.globalCompositeOperation = 'source-over';
     bc.clearRect(x, y, w, h);
     copiar(bc, a);
+    // Colores claros: multiply con la foto teñida. Colores oscuros: el multiply haría desaparecer el arte, así que se
+    // imprime "sobre base blanca": multiply con la foto ORIGINAL (conserva pliegues y luz) y luego se pega casi opaco.
+    const oscuro = esOscuro(estado);
     bc.globalCompositeOperation = 'multiply';
-    copiar(bc, estado.plantilla);
+    copiar(bc, oscuro ? estado.plantilla : plantillaTenida(estado));
     bc.globalCompositeOperation = 'destination-in';
     copiar(bc, a);
     bc.globalCompositeOperation = 'source-atop';
     decorar(bc);
     bc.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = oscuro ? 0.95 : 1;
     ctx.drawImage(b, x, y, w, h, x, y, w, h);
+    ctx.globalAlpha = 1;
   }
 
   function dibujarTazaFoto(ctx, estado) {
-    ctx.drawImage(estado.plantilla, 0, 0);
+    ctx.drawImage(plantillaTenida(estado), 0, 0);
     if (!estado.fuente) return;
     const area = AREAS.taza;
     const ac = estado.capas.a.getContext('2d');
@@ -184,7 +254,7 @@
 
   function dibujarTazaDibujada(ctx, estado) {
     const t = TAZA;
-    const base = COLORES_TAZA[estado.color] || COLORES_TAZA.blanca;
+    const base = estado.color && estado.color !== 'blanco' ? hexDeColor(estado.color) : '#ffffff';   // plantilla de respaldo
     const cx = (t.izqSup + t.derSup) / 2;
     const rx = (t.derSup - t.izqSup) / 2;
 
@@ -303,7 +373,7 @@
   }
 
   function dibujarCojinFoto(ctx, estado) {
-    ctx.drawImage(estado.plantilla, 0, 0);
+    ctx.drawImage(plantillaTenida(estado), 0, 0);
     if (!estado.fuente) return;
     const plano = estado.buffers.plano;
     const area = AREAS.cojin;
@@ -356,7 +426,7 @@
     ctx.shadowBlur = 28;
     ctx.shadowOffsetY = 14;
     trazoCojin(ctx);
-    ctx.fillStyle = '#f3f3f3';
+    ctx.fillStyle = estado.color && estado.color !== 'blanco' ? hexDeColor(estado.color) : '#f3f3f3';   // plantilla de respaldo
     ctx.fill();
     ctx.restore();
 
@@ -1010,7 +1080,9 @@
     const hayNavegador = typeof document !== 'undefined' && typeof Image !== 'undefined';
     const estado = {
       tipo,
-      color: 'blanca',
+      color: colorPorDefecto(tipo),   // null en el llavero
+      tenidas: {},            // fotos de plantilla ya teñidas, por color (caché)
+      mascara: null,          // silueta del objeto (taza y cojín), solo se calcula si se elige un color
       fuente: null,
       modo: 'completa',
       foto: { cx: area.x + area.w / 2, cy: area.y + area.h / 2, scale: 1, rot: 0 },
@@ -1092,10 +1164,14 @@
         estado.foto = { cx: area.x + area.w / 2, cy: area.y + area.h / 2, scale: escalaInicial, rot: 0 };
         visor.render();
       },
-      setColorTaza(color) {
-        if (COLORES_TAZA[color]) estado.color = color;
-        visor.render();
+      // Color del producto (taza y cojín). Mantiene foto, posición y zoom. Se redibuja en el siguiente cuadro.
+      setColor(id) {
+        if (!colorValido(tipo, id) || id === estado.color) return false;
+        estado.color = id;
+        pedirRender();
+        return true;
       },
+      getColor() { return estado.color; },
       mover(dx, dy) {
         estado.foto.cx += dx;
         estado.foto.cy += dy;
@@ -1126,6 +1202,47 @@
           canvas.toBlob(b => (b ? resolve(b) : reject(new Error('No se pudo exportar el PNG'))), 'image/png');
         });
       },
+      // 'completa' | 'recorte': el modo de la foto que se está mostrando
+      getModo() { return estado.modo; },
+      // PNG del ARTE solo (sin producto, fondo, zoom, giro ni posición): el recorte con alfa o la foto tal como se subió,
+      // recortado a su contenido visible (con margen) y con el lado largo <= 2000 px (nunca se agranda).
+      // Usa lienzos temporales que se liberan al terminar.
+      exportarArte() {
+        const fuente = estado.fuente;
+        if (!fuente || typeof document === 'undefined') return Promise.reject(new Error('Sin arte para exportar'));
+        const w = fuente.width || fuente.videoWidth || fuente.naturalWidth;
+        const h = fuente.height || fuente.videoHeight || fuente.naturalHeight;
+        if (!w || !h) return Promise.reject(new Error('Sin arte para exportar'));
+        const temp = document.createElement('canvas');
+        temp.width = w;
+        temp.height = h;
+        const tc = temp.getContext('2d');
+        tc.drawImage(fuente, 0, 0, w, h);
+        let caja = { x: 0, y: 0, w, h };
+        try {
+          const d = tc.getImageData(0, 0, w, h).data;
+          const alfa = new Uint8Array(w * h);
+          for (let i = 0; i < alfa.length; i++) alfa[i] = d[i * 4 + 3];
+          caja = cajaOpaca(alfa, w, h, Math.max(4, Math.round(Math.max(w, h) * 0.01)));
+        } catch (e) { /* sin lectura de píxeles: se exporta completa */ }
+        const salida = limitarResolucion(caja.w, caja.h, 2000);
+        const fin = document.createElement('canvas');
+        fin.width = salida.w;
+        fin.height = salida.h;
+        const fc = fin.getContext('2d');
+        fc.imageSmoothingEnabled = true;
+        fc.imageSmoothingQuality = 'high';
+        fc.drawImage(temp, caja.x, caja.y, caja.w, caja.h, 0, 0, salida.w, salida.h);
+        temp.width = 0;
+        temp.height = 0;
+        return new Promise((resolve, reject) => {
+          fin.toBlob(b => {
+            fin.width = 0;
+            fin.height = 0;
+            if (b) resolve(b); else reject(new Error('No se pudo exportar el arte'));
+          }, 'image/png');
+        });
+      },
       destruir() {
         destruido = true;
         if (cuadro) cancelAnimationFrame(cuadro);
@@ -1138,6 +1255,9 @@
         if (estado.buffers) aux.push(...Object.values(estado.buffers));
         if (estado.capas) aux.push(estado.capas.a, estado.capas.b);
         if (estado.plantilla) aux.push(estado.plantilla);
+        aux.push(...Object.values(estado.tenidas));
+        estado.tenidas = {};
+        estado.mascara = null;
         for (const b of aux) { b.width = 0; b.height = 0; }
         estado.buffers = null;
         estado.capas = null;
