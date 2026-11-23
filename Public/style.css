@@ -1045,3 +1045,16 @@ input:focus-visible {
   .skeleton::after { animation: none; display: none; }
   .cart-bump, .cart-shake { animation: none !important; }
 }
+
+/* ============================================= */
+/* CURSOR DE TEXTO VISIBLE (solo con mouse)       */
+/* I-beam oscuro con halo blanco: se ve sobre fondos claros y oscuros (el del sistema se pierde en el hero oscuro).  */
+/* Especificidad 0 (:where): cualquier regla de cursor existente (pointer, grab, progress, not-allowed) gana, y  */
+/* quedan fuera los enlaces, botones y todo lo que esté dentro de ellos. Hotspot 12 12; si falla, `text`.        */
+/* ============================================= */
+@media (hover: hover) and (pointer: fine) {
+  :where(p, h1, h2, h3, h4, h5, h6, li, span, small, blockquote, td, th, dd, dt, figcaption, label:not([for]), .card-body):not(:where(a, button, [role="button"], .btn, summary, label[for], select, .thumb, .cart-line-remove, .qty-pill-btn, .back-to-top, .icon-btn, .visor-muestra, .visor-lienzo) *),
+  :where(textarea, input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="submit"], [type="button"], [type="reset"], [type="image"], [type="color"])):not(:disabled) {
+    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M8 3h8M8 21h8M12 3v18' fill='none' stroke='white' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M8 3h8M8 21h8M12 3v18' fill='none' stroke='%23111' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") 12 12, text;
+  }
+}

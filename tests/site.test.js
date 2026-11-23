@@ -211,7 +211,7 @@ test('todas las páginas que cargan style.css piden la versión 5', () => {
   for (const page of pages) {
     const html = read(page);
     if (!html.includes('style.css')) continue;
-    assert.match(html, /style\.css\?v=10"/, `${page}: debe cargar style.css?v=10`);
+    assert.match(html, /style\.css\?v=11"/, `${page}: debe cargar style.css?v=11`);
     assert.ok(!html.includes('style.css?v=2'), `${page}: quedó style.css?v=2`);
   }
 });
@@ -573,4 +573,62 @@ test('nota de tamaño: contenedor en personalizar.html, product.html y tarjetas;
     const esperado = ['llaveros', 'almohadas', 'mugs'].includes(p.category) || /llavero|almohada|cojin|mug|taza/i.test(p.name) && p.category === 'otros';
     assert.equal(!!medidaProducto(p), esperado, `${p.name} (${p.category})`);
   }
+});
+
+test('style.css: cursor de texto oscuro con halo solo con mouse, sin tocar enlaces, botones ni cursores propios', () => {
+  const css = read('style.css').replace(/\r\n/g, '\n');
+  const i = css.indexOf('@media (hover: hover) and (pointer: fine) {');
+  assert.ok(i > 0, 'dentro de (hover: hover) and (pointer: fine)');
+  const bloque = css.slice(i);
+  const uri = bloque.match(/cursor: url\("(data:image\/svg\+xml,[^"]+)"\) 12 12, text;/);
+  assert.ok(uri, 'data URI con hotspot 12 12 y respaldo `text`');
+  assert.ok(decodeURIComponent(uri[1]).includes('<svg') && uri[1].includes("stroke='%23111'") && uri[1].includes("stroke='white'"), 'I-beam #111 con halo blanco');
+  const reglas = bloque.slice(0, bloque.indexOf('{', bloque.indexOf(':where(textarea')));
+  const selector = bloque.slice(bloque.indexOf(':where(p, h1'), bloque.indexOf('{', bloque.indexOf(':where(p, h1')));
+  for (const t of ['p', 'h1', 'h6', 'li', 'span', 'small', 'blockquote', 'td', 'th', 'dd', 'dt', 'figcaption', '.card-body']) assert.ok(selector.includes(t), t);
+  // a, button, .btn... solo aparecen dentro de :not(:where(...) *), nunca como destino
+  const objetivo = selector.slice(0, selector.indexOf(':not(:where('));
+  assert.ok(!/(^|[ ,(])(a|button|select|summary)([ ,)]|$)|\.btn|\[role/.test(objetivo), 'ningún destino es a/button/.btn');
+  for (const x of ['a,', 'button', '[role="button"]', '.btn', 'summary', 'label[for]', 'select', '.visor-lienzo']) assert.ok(selector.includes(x), `excluye ${x}`);
+  assert.ok(reglas.includes('input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="submit"]'));
+  // los cursores propios siguen ahí y ganan por tener más especificidad que :where()
+  assert.match(css, /\.visor-lienzo\.con-foto \{[^}]*cursor: grab/);
+  assert.match(css, /\.visor-lienzo\.con-foto:active \{ cursor: grabbing/);
+  assert.match(css, /\.visor-lienzo\.visor-ocupado \{ cursor: progress/);
+  assert.ok(read('carrito.html').includes('#checkoutModal input:not([type=checkbox]), #checkoutModal textarea { caret-color'), 'la regla del checkout sigue');
+  assert.ok(!/admin/.test(css.slice(i)), 'no toca el admin');
+});
+
+test('personalizar.js sin ?tipo (llavero por defecto): rellena #visorMedidaTexto y el contenedor no está oculto', () => {
+  const vm = require('node:vm');
+  const { medidaPorTipoVisor, PERSONALIZACION_TIPOS } = require('../Public/shared.js');
+  const textos = {};
+  const falso = (id) => new Proxy({ id, classList: { add() {}, remove() {}, toggle() {}, contains: () => false }, dataset: {}, style: {}, set textContent(v) { textos[id] = v; }, get textContent() { return textos[id] || ''; } }, {
+    get: (o, k) => (k in o ? o[k] : typeof k === 'symbol' ? undefined : (() => falso(String(k)))),
+    set: (o, k, v) => { o[k] = v; return true; }
+  });
+  const lista = { forEach() {}, length: 0, [Symbol.iterator]: function* () {} };
+  const sandbox = {
+    console, URLSearchParams, PERSONALIZACION_TIPOS, medidaPorTipoVisor,
+    window: { location: { search: '', origin: 'https://x.co' }, history: {} },
+    document: { getElementById: falso, querySelectorAll: () => lista, createElement: () => falso('el'), title: '', body: falso('body') },
+    COLORES_POR_TIPO: { taza: [], cojin: [] }, colorPorDefecto: () => null, coloresDisponibles: () => [],
+    crearVisor: () => falso('visor'), crearRecorte: () => ({}), setTimeout, localStorage: { getItem() { return null; } }
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(read('personalizar.js'), sandbox);
+  assert.equal(textos.visorMedidaTexto, 'Tamaño: 4 cm x 4 cm', 'sin tipo = llavero con su medida');
+  // y con ?tipo=llavero / inválido
+  for (const search of ['?tipo=llavero', '?tipo=nada']) {
+    for (const k of Object.keys(textos)) delete textos[k];
+    sandbox.window.location.search = search;
+    vm.runInContext(read('personalizar.js'), sandbox);
+    assert.equal(textos.visorMedidaTexto, 'Tamaño: 4 cm x 4 cm', search);
+  }
+  const html = read('personalizar.html');
+  const tag = html.match(/<p[^>]*id="visorMedida"[^>]*>/)[0];
+  assert.ok(!/hidden|d-none|display\s*:\s*none/.test(tag), 'el contenedor no se oculta');
+  const antes = read('personalizar.js').slice(0, read('personalizar.js').indexOf("$('visorMedidaTexto')"));
+  assert.ok(!/\breturn;/.test(antes.slice(antes.indexOf('function iniciar'))), 'ningún return temprano antes de rellenarlo');
+  assert.ok(html.includes('personalizar.js?v='), 'cargado con versión');
 });
