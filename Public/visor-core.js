@@ -164,11 +164,13 @@ function colorDeUrl(tipo, valor, disponibles) {
 // ---------- Solicitud de pedido personalizado por WhatsApp (solo texto; no lleva datos personales) ----------
 var NOMBRES_PRODUCTO_SOLICITUD = { taza: 'Taza', cojin: 'Cojín', llavero: 'Llavero' };
 
-function mensajeSolicitudPersonalizada(tipo, colorId, origen) {
+function mensajeSolicitudPersonalizada(tipo, colorId, origen, medida) {
   const producto = Object.prototype.hasOwnProperty.call(NOMBRES_PRODUCTO_SOLICITUD, tipo) ? NOMBRES_PRODUCTO_SOLICITUD[tipo] : 'Producto personalizado';
   const lineas = ['Hola Shopymemes 👋 Me gustó cómo quedó mi diseño y quiero solicitar un pedido personalizado.', 'Producto: ' + producto];
   if (colorValido(tipo, colorId)) lineas.push('Color: ' + COLORES_PRODUCTO[colorId].etiqueta);
   if (typeof origen === 'string' && /^https?:\/\/[A-Za-z0-9.:-]{1,100}$/.test(origen)) lineas.push('Desde: ' + origen);
+  // medida: el texto de tamaño de shared.js (medidaPorTipoVisor); solo texto simple de una línea
+  if (typeof medida === 'string' && /^[\wÁÉÍÓÚÑáéíóúñ ():.,x-]{1,120}$/.test(medida)) lineas.push(medida);
   lineas.push('Te envío la imagen de mi diseño.');
   return lineas.join('\n');
 }

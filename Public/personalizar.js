@@ -86,6 +86,7 @@
 
     // ----- textos de la página -----
     const nombreTipo = NOMBRES_TIPO[tipo] || tipo;
+    $('visorMedidaTexto').textContent = medidaPorTipoVisor(tipo);   // tamaño del producto (textContent: nada se interpreta como HTML)
     document.title = `Personaliza: ${nombreTipo} | Shopymemes`;
     document.querySelectorAll('#visorTipos [data-tipo]').forEach(a => {
       if (a.dataset.tipo === tipo) a.setAttribute('aria-current', 'page');
@@ -330,7 +331,7 @@
     botonSolicitar.addEventListener('click', async () => {
       if (ocupado || !canvasFoto) return;
       notaSolicitar.textContent = '';
-      const mensajeWa = mensajeSolicitudPersonalizada(tipo, colorActual, window.location.origin);
+      const mensajeWa = mensajeSolicitudPersonalizada(tipo, colorActual, window.location.origin, medidaPorTipoVisor(tipo));
       let archivos;
       try {
         archivos = await crearArchivos();

@@ -11,7 +11,7 @@ La meta del proyecto es que todo funcione **gratis** (planes gratuitos de Fireba
 ## Qué hace
 
 ### Para quien compra
-- **Catálogo** con inicio, categorías, ofertas, buscador y página de producto.
+- **Catálogo** con inicio, categorías, ofertas, buscador y página de producto. Los llaveros (4 cm x 4 cm), cojines (30 cm x 30 cm) y mugs (tamaño estándar de pocillo) muestran su tamaño en tarjetas, página de producto, visor y mensaje de WhatsApp.
 - **Carrito** con animaciones y **formulario de pedido** (nombre, celular, ciudad, dirección, referencias, aviso de conjunto cerrado y aceptación de la Ley 1581 de protección de datos).
 - **Confirmación** "Pedido #SM-… recibido" y mensaje ordenado a WhatsApp.
 - **Visor de personalización 2D:** el cliente sube su foto y ve cómo queda en una **taza**, un **cojín** o un **llavero acrílico**, antes de pedir.

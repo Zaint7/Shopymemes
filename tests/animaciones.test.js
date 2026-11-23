@@ -53,12 +53,12 @@ test('retraso escalona poco y con tope', () => {
   assert.ok(retraso(7) <= 450);
 });
 
-test('las páginas con grids cargan animaciones.js (defer) y style.css?v=9', () => {
+test('las páginas con grids cargan animaciones.js (defer) y style.css?v=10', () => {
   for (const page of ['index.html', 'ofertas.html', 'product.html', 'categorias.html']) {
     assert.match(read(page), /<script src="animaciones\.js\?v=2" defer><\/script>/, `${page}: falta animaciones.js`);
   }
   for (const page of fs.readdirSync(PUBLIC).filter(f => f.endsWith('.html') && read(f).includes('style.css'))) {
-    assert.match(read(page), /style\.css\?v=9"/, `${page}: debe cargar style.css?v=9`);
+    assert.match(read(page), /style\.css\?v=10"/, `${page}: debe cargar style.css?v=10`);
   }
 });
 

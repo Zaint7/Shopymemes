@@ -211,6 +211,7 @@ function productCardHtml(p, { colClass = 'col-6 col-md-4 col-lg-3', extraBtnClas
           <a href="${href}" class="text-decoration-none text-dark">
             <h3 class="product-card-title card-text mb-1 fw-semibold">${name}</h3>
           </a>
+          ${medidaHtml(p, 'product-card-medida')}
           ${priceHtml(p)}
           <button type="button" class="btn btn-dark btn-sm w-100 rounded-pill mt-auto ${extraBtnClass}" data-id="${escapeHtml(p.id)}"
             ${outOfStock ? 'disabled' : ''} aria-label="${outOfStock ? `${name} agotado` : `Agregar ${name} al carrito`}">
@@ -220,6 +221,50 @@ function productCardHtml(p, { colClass = 'col-6 col-md-4 col-lg-3', extraBtnClas
       </div>
     </div>
   `;
+}
+
+// ---------- Medidas de los productos (única fuente de los textos de tamaño) ----------
+const MEDIDAS_TIPO = Object.freeze({
+  llavero: 'Tamaño: 4 cm x 4 cm',
+  cojin: 'Tamaño: 30 cm x 30 cm',
+  taza: 'Tamaño estándar de pocillo de café (puede variar según el stock)'
+});
+// slug de la categoría de la tienda -> tipo (el catálogo usa llaveros, almohadas, mugs y otros)
+const CATEGORIA_A_TIPO = Object.freeze({
+  llaveros: 'llavero', llavero: 'llavero',
+  almohadas: 'cojin', almohada: 'cojin', cojines: 'cojin', cojin: 'cojin',
+  mugs: 'taza', mug: 'taza', tazas: 'taza', taza: 'taza'
+});
+
+function normalizarMedida_(v) {
+  return String(v == null ? '' : v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+// 'llavero' | 'cojin' | 'taza' (tipo del visor) -> texto de tamaño, o '' si no aplica
+function medidaPorTipoVisor(tipo) {
+  return typeof tipo === 'string' && Object.prototype.hasOwnProperty.call(MEDIDAS_TIPO, tipo) ? MEDIDAS_TIPO[tipo] : '';
+}
+
+// Texto de tamaño de un producto, o ''. Acepta la categoría (cadena) o { category, name }.
+// La categoría manda; solo si falta o es "otros" se busca UNA palabra completa en el nombre (llavero, cojín, almohada,
+// mug, taza). Cualquier otra categoría (stickers, posters...) no lleva nota.
+function medidaProducto(entrada) {
+  const obj = entrada && typeof entrada === 'object' && !Array.isArray(entrada);
+  const categoria = normalizarMedida_(obj ? (typeof entrada.category === 'string' ? entrada.category : '') : (typeof entrada === 'string' ? entrada : ''));
+  if (Object.prototype.hasOwnProperty.call(CATEGORIA_A_TIPO, categoria)) return MEDIDAS_TIPO[CATEGORIA_A_TIPO[categoria]];
+  if (!obj || (categoria !== '' && categoria !== 'otros')) return '';
+  const nombre = normalizarMedida_(typeof entrada.name === 'string' ? entrada.name : '');
+  const m = nombre.match(/(?:^|[^a-z0-9])(llaveros?|cojin(?:es)?|almohadas?|mugs?|tazas?)(?![a-z0-9])/);
+  return m ? MEDIDAS_TIPO[CATEGORIA_A_TIPO[m[1]]] : '';
+}
+
+const ICONO_REGLA = '<svg class="product-medida-icono" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="1.5" y="5" width="13" height="6" rx="1"/><path d="M4.5 5v2.5M7 5v3.5M9.5 5v2.5M12 5v3.5"/></svg>';
+
+// Una línea con icono de regla y el texto escapado (cadena vacía si el producto no lleva nota)
+function medidaHtml(p, extraClass = '') {
+  const texto = medidaProducto(p);
+  if (!texto) return '';
+  return `<p class="product-medida${extraClass ? ' ' + escapeHtml(extraClass) : ''}" title="${escapeHtml(texto)}">${ICONO_REGLA}<span>${escapeHtml(texto)}</span></p>`;
 }
 
 // ---------- Métricas del catálogo (pestaña "Métricas" del admin; solo usa los productos ya cargados) ----------
@@ -385,6 +430,6 @@ if (typeof module !== 'undefined' && module.exports) {
     maxQtyFor, priceHtml, productCardHtml, imgUrl, imgSrcset, imgOrigAttr, imgFallbackOriginal, isValidUpdatedAt,
     isValidCatalog, pickNewerCatalog, mergeProducts, calcularMetricasCatalogo,
     estimarConsumo, estadoConsumo, CONSUMO_LIMITES, CONSUMO_SUPUESTOS,
-    parsearResumenPedidos, formatearVentas
+    parsearResumenPedidos, formatearVentas, medidaProducto, medidaPorTipoVisor, medidaHtml
   };
 }

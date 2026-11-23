@@ -471,3 +471,57 @@ test('formatearVentas usa el formato COP de la tienda y aguanta valores raros', 
   assert.equal(formatearVentas(1e300), formatPrice(1e12));
   assert.equal(formatearVentas(1999.6), formatPrice(2000));
 });
+
+// ---------- Medidas de los productos ----------
+const { medidaProducto, medidaPorTipoVisor, medidaHtml } = require('../Public/shared.js');
+const M_LLAVERO = 'Tamaño: 4 cm x 4 cm';
+const M_COJIN = 'Tamaño: 30 cm x 30 cm';
+const M_TAZA = 'Tamaño estándar de pocillo de café (puede variar según el stock)';
+
+test('medidaPorTipoVisor: un texto por tipo y vacío para lo desconocido', () => {
+  assert.equal(medidaPorTipoVisor('llavero'), M_LLAVERO);
+  assert.equal(medidaPorTipoVisor('cojin'), M_COJIN);
+  assert.equal(medidaPorTipoVisor('taza'), M_TAZA);
+  for (const x of ['', null, undefined, 'otro', 'constructor', '__proto__', 5, {}]) assert.equal(medidaPorTipoVisor(x), '', String(x));
+});
+
+test('medidaProducto: por categoría (slug o nombre de la categoría), con mayúsculas y acentos', () => {
+  assert.equal(medidaProducto({ category: 'llaveros', name: 'x' }), M_LLAVERO);
+  assert.equal(medidaProducto({ category: 'almohadas', name: 'x' }), M_COJIN);
+  assert.equal(medidaProducto({ category: 'cojines', name: 'x' }), M_COJIN);
+  assert.equal(medidaProducto({ category: 'mugs', name: 'x' }), M_TAZA);
+  assert.equal(medidaProducto({ category: 'tazas', name: 'x' }), M_TAZA);
+  assert.equal(medidaProducto({ category: ' LLAVEROS ', name: 'x' }), M_LLAVERO);
+  assert.equal(medidaProducto('almohadas'), M_COJIN, 'una cadena es una categoría');
+  assert.equal(medidaProducto('Cojínes'), M_COJIN);
+});
+
+test('medidaProducto: otras categorías no llevan nota, aunque el nombre tenga la palabra', () => {
+  assert.equal(medidaProducto({ category: 'stickers', name: 'Sticker de taza' }), '');
+  assert.equal(medidaProducto({ category: 'posters', name: 'Poster de llavero' }), '');
+  assert.equal(medidaProducto('stickers'), '');
+  assert.equal(medidaProducto('Llavero Cats'), '', 'una cadena nunca se interpreta como nombre');
+});
+
+test('medidaProducto: sin categoría o "otros" se usa el nombre, de forma conservadora', () => {
+  assert.equal(medidaProducto({ category: 'otros', name: 'Llavero Trollface' }), M_LLAVERO);
+  assert.equal(medidaProducto({ name: 'Cojín gatito' }), M_COJIN);
+  assert.equal(medidaProducto({ category: '', name: 'ALMOHADA meme' }), M_COJIN);
+  assert.equal(medidaProducto({ category: 'otros', name: 'Taza con foto' }), M_TAZA);
+  assert.equal(medidaProducto({ category: 'otros', name: 'Mug negro' }), M_TAZA);
+  assert.equal(medidaProducto({ category: 'otros', name: 'Almohadas varias' }), M_COJIN);
+  // no coincidencias parciales ni nombres sin la palabra
+  for (const n of ['Gorra Nyan Cat', 'Poster This is fine', 'Mugre', 'Tazamania', 'Llaveroteca', 'pruebva', '']) assert.equal(medidaProducto({ category: 'otros', name: n }), '', n);
+});
+
+test('medidaProducto: entradas raras -> cadena vacía', () => {
+  for (const x of [null, undefined, 5, [], {}, { category: 5, name: 7 }, { category: {}, name: [] }, '', '__proto__', 'constructor']) assert.equal(medidaProducto(x), '', JSON.stringify(x));
+});
+
+test('medidaHtml: una línea con icono y el texto escapado; vacía si no aplica', () => {
+  const h = medidaHtml({ category: 'llaveros', name: 'x' });
+  assert.ok(h.includes('class="product-medida"') && h.includes(M_LLAVERO) && h.includes('<svg') && h.includes('aria-hidden="true"'));
+  assert.equal(medidaHtml({ category: 'stickers', name: 'x' }), '');
+  assert.ok(medidaHtml({ category: 'mugs', name: 'x' }, 'product-detail-medida').includes('class="product-medida product-detail-medida"'));
+  assert.ok(!/<script/i.test(medidaHtml({ category: '<script>', name: '<script>' })));
+});

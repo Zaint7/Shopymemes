@@ -68,7 +68,7 @@ test('toda página que carga shared.js lo pide con versión (si no, el navegador
   for (const page of pages) {
     const html = read(page);
     if (!html.includes('shared.js"') && !html.includes('shared.js?')) continue;
-    assert.ok(html.includes('src="shared.js?v=11"'), `${page}: debe cargar shared.js?v=11`);
+    assert.ok(html.includes('src="shared.js?v=12"'), `${page}: debe cargar shared.js?v=12`);
   }
 });
 
@@ -190,7 +190,7 @@ test('los links que abren otra pestaña usan rel="noopener"', () => {
 
 test('personalizar.html carga los scripts del visor con versión y en el orden correcto', () => {
   const html = read('personalizar.html');
-  const orden = ['shared.js?v=11', 'products.js?v=4', 'cart.js', 'layout.js', 'visor-core.js?v=7', 'foto-archivo.js?v=1', 'visor.js?v=8', 'recorte.js?v=3', 'personalizar.js?v=8'];
+  const orden = ['shared.js?v=12', 'products.js?v=4', 'cart.js', 'layout.js', 'visor-core.js?v=7', 'foto-archivo.js?v=1', 'visor.js?v=8', 'recorte.js?v=3', 'personalizar.js?v=9'];
   let anterior = -1;
   for (const src of orden) {
     const i = html.indexOf(`src="${src}"`);
@@ -211,7 +211,7 @@ test('todas las páginas que cargan style.css piden la versión 5', () => {
   for (const page of pages) {
     const html = read(page);
     if (!html.includes('style.css')) continue;
-    assert.match(html, /style\.css\?v=9"/, `${page}: debe cargar style.css?v=9`);
+    assert.match(html, /style\.css\?v=10"/, `${page}: debe cargar style.css?v=10`);
     assert.ok(!html.includes('style.css?v=2'), `${page}: quedó style.css?v=2`);
   }
 });
@@ -363,7 +363,7 @@ test('visor.js: silueta real del cojín (40-80 puntos) y escena de madera en cac
 
 test('carrito.html carga pedidos-config.js y pedido.js (?v=1) después de layout.js y usa el formulario de pedido', () => {
   const html = read('carrito.html');
-  const orden = ['shared.js?v=11', 'products.js?v=4', 'cart.js', 'layout.js', 'pedidos-config.js?v=1', 'pedido.js?v=1'];
+  const orden = ['shared.js?v=12', 'products.js?v=4', 'cart.js', 'layout.js', 'pedidos-config.js?v=1', 'pedido.js?v=1'];
   let anterior = -1;
   for (const src of orden) {
     const i = html.indexOf(`src="${src}"`);
@@ -406,9 +406,9 @@ test('carrito.html: los campos del checkout tienen caret oscuro y cursor de text
   assert.ok(!/(^|\n)\s*(body|input|html)\s*\{[^}]*cursor:\s*url/.test(html), 'el cursor solo aplica dentro del modal');
 });
 
-test('las páginas que muestran fotos usan imgUrl/imgSrcset (variantes optimizadas) y cargan shared.js?v=11', () => {
+test('las páginas que muestran fotos usan imgUrl/imgSrcset (variantes optimizadas) y cargan shared.js?v=12', () => {
   for (const page of ['index.html', 'ofertas.html', 'product.html', 'carrito.html', 'categorias.html']) {
-    assert.ok(read(page).includes('src="shared.js?v=11"'), `${page}: debe cargar shared.js?v=11`);
+    assert.ok(read(page).includes('src="shared.js?v=12"'), `${page}: debe cargar shared.js?v=12`);
   }
   // index/ofertas pintan con productCardHtml (que usa imgUrl); las demás llaman al helper directo
   assert.ok(read('shared.js').includes('imgUrl(p.image, 640)'));
@@ -428,7 +428,7 @@ test('admin.html tiene la pestaña Métricas con enlaces rápidos y sin lecturas
   const html = read('admin.html');
   assert.ok(html.includes('id="tabMetricsBtn"') && html.includes('id="metricsView"'));
   assert.ok(html.includes('aria-pressed="false" aria-controls="metricsView"'));
-  assert.ok(html.includes('src="shared.js?v=11"'));
+  assert.ok(html.includes('src="shared.js?v=12"'));
   for (const url of ['https://console.firebase.google.com/project/shopymemes/firestore/usage', 'https://console.cloudinary.com/', 'https://drive.google.com/', 'https://search.google.com/search-console']) {
     const a = html.match(new RegExp(`<a href="${url.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&')}"[^>]*>`));
     assert.ok(a, `falta el enlace ${url}`);
@@ -553,4 +553,24 @@ test('descarga de 2 archivos: diseño con producto + arte solo, con nombres, not
   assert.ok(/exportarPNG\(\) \{\s*visor\.render\(\);/.test(vjs), 'exportarPNG sigue dibujando al instante');
   assert.ok(!/estado\.foto\./.test(vjs.slice(vjs.indexOf('exportarArte() {'), vjs.indexOf('destruir() {'))), 'el arte no lleva zoom, giro ni posición');
   assert.ok(vjs.includes('temp.width = 0') && vjs.includes('fin.width = 0'), 'libera los lienzos temporales');
+});
+
+test('nota de tamaño: contenedor en personalizar.html, product.html y tarjetas; el WhatsApp lleva la misma línea', () => {
+  const sh = read('shared.js');
+  assert.ok(sh.includes("${medidaHtml(p, 'product-card-medida')}"), 'las tarjetas la muestran');
+  assert.ok(read('product.html').includes("${medidaHtml(product, 'product-detail-medida')}"));
+  const html = read('personalizar.html');
+  assert.ok(html.includes('id="visorMedida"') && html.includes('id="visorMedidaTexto"'));
+  const js = read('personalizar.js');
+  assert.ok(js.includes("$('visorMedidaTexto').textContent = medidaPorTipoVisor(tipo)"), 'textContent, no innerHTML');
+  assert.ok(js.includes('mensajeSolicitudPersonalizada(tipo, colorActual, window.location.origin, medidaPorTipoVisor(tipo))'));
+  assert.match(read('style.css'), /\.product-card-medida span \{[^}]*text-overflow: ellipsis;[^}]*white-space: nowrap/);
+  assert.match(read('style.css'), /\.product-medida \{[^}]*color: #5c636a/);
+  // los productos reales del catálogo: llaveros, almohadas y mugs llevan nota; otros no
+  const { medidaProducto } = require('../Public/shared.js');
+  const cat = JSON.parse(read('catalog.json'));
+  for (const p of cat.products) {
+    const esperado = ['llaveros', 'almohadas', 'mugs'].includes(p.category) || /llavero|almohada|cojin|mug|taza/i.test(p.name) && p.category === 'otros';
+    assert.equal(!!medidaProducto(p), esperado, `${p.name} (${p.category})`);
+  }
 });

@@ -362,3 +362,11 @@ test('limitarResolucion: lado largo máximo 2000, proporción intacta, nunca agr
   assert.deepEqual(limitarResolucion(0, 5), { w: 0, h: 0, escala: 1 });
   assert.deepEqual(limitarResolucion(500, 500, 100), { w: 100, h: 100, escala: 0.2 });
 });
+
+test('mensajeSolicitudPersonalizada: incluye la línea de tamaño cuando se pasa (mismo texto que la nota)', () => {
+  const m = mensajeSolicitudPersonalizada('taza', 'rojo', undefined, 'Tamaño estándar de pocillo de café (puede variar según el stock)');
+  assert.match(m, /Color: Rojo\nTamaño estándar de pocillo de café \(puede variar según el stock\)\nTe envío/);
+  assert.match(mensajeSolicitudPersonalizada('llavero', null, 'https://x.co', 'Tamaño: 4 cm x 4 cm'), /Producto: Llavero\nDesde: https:\/\/x\.co\nTamaño: 4 cm x 4 cm\nTe envío/);
+  assert.ok(!mensajeSolicitudPersonalizada('llavero', null).includes('Tamaño'));
+  assert.ok(!mensajeSolicitudPersonalizada('llavero', null, undefined, 'a\nb<>').includes('<>'), 'texto raro: una sola línea limpia o nada');
+});

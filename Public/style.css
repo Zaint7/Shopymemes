@@ -883,6 +883,21 @@ input:focus-visible {
   .visor-panel .progress-bar { transition: none; }
 }
 
+/* Nota de tamano (llavero, cojin, taza): linea pequena y gris con icono de regla (#5c636a = 6:1 sobre blanco) */
+.product-medida {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 0.4rem;
+  color: #5c636a;
+  font-size: 0.8rem;
+  line-height: 1.3;
+}
+.product-medida-icono { flex: 0 0 auto; }
+.product-card-medida { min-width: 0; }
+.product-card-medida span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.product-detail-medida { font-size: 0.95rem; margin-bottom: 0.75rem; }
+
 /* ============================================= */
 /* MOVIMIENTO REDUCIDO: sin animaciones decorativas */
 /* ============================================= */
