@@ -6,6 +6,8 @@
  *    en la pestaña "Pedidos" y te manda un correo de aviso.
  *  - copiaDiaria: cada madrugada copia la hoja a una carpeta de Drive y borra copias viejas.
  *  - instalarTriggers: crea esa tarea diaria (se corre UNA sola vez a mano).
+ *  - doGet + setupToken: el admin de la tienda consulta un RESUMEN (solo totales, nada de datos
+ *    personales) con una clave secreta que vive únicamente en las Propiedades del script.
  *
  * Guía paso a paso: docs/guia-hoja-de-pedidos.md
  * Sin librerías externas.
@@ -30,8 +32,12 @@ const MAX_ITEMS = 60;
 
 // ---------- Entrada web ----------
 
-function doGet() {
-  return ContentService.createTextOutput('ok');
+function doGet(e) {
+  const params = (e && e.parameter) || {};
+  // Sin clave y sin acción (abrir la dirección, revisiones automáticas, robots): solo confirma que el script vive.
+  // No cuenta como intento fallido.
+  if (!('token' in params) && !('accion' in params)) return ContentService.createTextOutput('ok');
+  return atenderConsulta_(params);
 }
 
 function doPost(e) {
@@ -336,6 +342,203 @@ function leerPedidos_(hoja) {
   const filas = hoja.getRange(2, 1, ultima - 1, 4).getValues();
   for (let i = 0; i < filas.length; i++) mapa[String(filas[i][0])] = String(filas[i][3]);
   return mapa;
+}
+
+// ---------- Resumen para el admin (solo agregados, sin datos personales) ----------
+// La clave secreta (ADMIN_TOKEN) vive SOLO en Propiedades del script. Nunca en el repositorio ni en la tienda.
+// Esta respuesta NUNCA incluye celular, nombre, dirección ni referencias de los clientes.
+
+const MAX_FALLOS = 10;                        // intentos fallidos permitidos (de todos, juntos) en la ventana
+const TOKEN_MIN = 32;                         // una clave más corta se considera "sin configurar"
+const CACHE_RESUMEN_SEG = 60;
+const DIAS_RESUMEN = 30;
+const MAX_FILAS_RESUMEN = 20000;
+const ESTADOS_PENDIENTES = ['nuevo', 'pago verificado', 'en preparacion'];
+
+/**
+ * Se corre UNA vez a mano (y de nuevo cuando quieras cambiar la clave).
+ * Crea una clave larga al azar, la guarda en las Propiedades del script y la muestra UNA sola vez en el registro de ejecución.
+ */
+function setupToken() {
+  const token = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
+  PropertiesService.getScriptProperties().setProperty('ADMIN_TOKEN', token);
+  try { CacheService.getScriptCache().remove('resumen_v1'); } catch (err) { /* no pasa nada */ }
+  Logger.log('Tu clave de métricas (cópiala ahora, no se vuelve a mostrar): ' + token);
+}
+
+function json_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+// Comparación que tarda lo mismo acierte o falle (no filtra cuántas letras coinciden)
+function iguales_(a, b) {
+  a = String(a); b = String(b);
+  let dif = a.length ^ b.length;
+  const largo = Math.max(a.length, b.length);
+  for (let i = 0; i < largo; i++) dif |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  return dif === 0;
+}
+
+// Fallos guardados como "cuenta|momentoDelPrimero"; pasados 10 minutos desde el primero, se olvidan
+function leerFallos_(cache, ahora) {
+  const partes = String(cache.get('adm_fallos') || '').split('|');
+  const cuenta = parseInt(partes[0], 10), primero = parseInt(partes[1], 10);
+  if (!(cuenta > 0) || !isFinite(primero) || ahora - primero >= VENTANA_SEG * 1000) return { cuenta: 0, primero: ahora };
+  return { cuenta: cuenta, primero: primero };
+}
+
+function atenderConsulta_(params) {
+  const cache = CacheService.getScriptCache();
+  const ahora = Date.now();
+  const previo = leerFallos_(cache, ahora);
+  if (previo.cuenta >= MAX_FALLOS) return json_({ ok: false, error: 'bloqueado' });  // ni se compara
+  const guardado = String(PropertiesService.getScriptProperties().getProperty('ADMIN_TOKEN') || '');
+  const recibido = String(params.token == null ? '' : params.token).slice(0, 200);
+  const valido = guardado.length >= TOKEN_MIN && recibido.length > 0 && iguales_(recibido, guardado);
+  if (!valido) {
+    // Ventana fija: cuenta + momento del PRIMER fallo. Los fallos nuevos no alargan el castigo.
+    const primero = previo.cuenta > 0 ? previo.primero : ahora;
+    const resta = Math.max(1, Math.ceil((primero + VENTANA_SEG * 1000 - ahora) / 1000));
+    cache.put('adm_fallos', (previo.cuenta + 1) + '|' + primero, resta);
+    return json_({ ok: false, error: 'no_autorizado' });
+  }
+  if (params.accion !== 'resumen') return json_({ ok: false, error: 'accion_desconocida' });
+  const guardadoCache = cache.get('resumen_v1');
+  if (guardadoCache) return ContentService.createTextOutput(guardadoCache).setMimeType(ContentService.MimeType.JSON);
+  let texto;
+  try {
+    texto = JSON.stringify(calcularResumen_(Date.now()));
+  } catch (err) {
+    console.error('Resumen: ' + err.name);
+    return json_({ ok: false, error: 'error_interno' });
+  }
+  try { cache.put('resumen_v1', texto, CACHE_RESUMEN_SEG); } catch (err) { /* demasiado grande: se calcula cada vez */ }
+  return ContentService.createTextOutput(texto).setMimeType(ContentService.MimeType.JSON);
+}
+
+function normalizar_(s) {
+  return String(s == null ? '' : s).trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+// "45000", 45000, "$ 45.000", "45.000,50", "45,000" -> número (0 si no se entiende)
+function parsearTotal_(v) {
+  let n;
+  if (typeof v === 'number') n = v;
+  else {
+    let t = String(v == null ? '' : v).replace(/[^\d.,-]/g, '');
+    const punto = t.lastIndexOf('.'), coma = t.lastIndexOf(',');
+    if (punto >= 0 && coma >= 0) {
+      t = punto > coma ? t.replace(/,/g, '') : t.replace(/\./g, '').replace(',', '.');
+    } else if (punto >= 0 || coma >= 0) {
+      const sep = punto >= 0 ? '.' : ',';
+      const partes = t.split(sep);
+      const miles = partes.length > 2 || (partes.length === 2 && partes[1].length === 3 && partes[0].length >= 1 && partes[0] !== '0');
+      t = miles ? partes.join('') : partes.join('.');
+    }
+    n = parseFloat(t);
+  }
+  if (!isFinite(n) || n < 0) return 0;
+  return Math.min(Math.round(n * 100) / 100, 1e12);
+}
+
+// Fecha de la hoja (Date, número de serie, aaaa-mm-dd, ISO o "dd/mm/aaaa hh:mm" hora Bogotá) -> milisegundos, o null
+function parsearFecha_(v) {
+  if (v == null || v === '') return null;
+  if (Object.prototype.toString.call(v) === '[object Date]') return isNaN(v.getTime()) ? null : v.getTime();
+  if (typeof v === 'number') {
+    if (!isFinite(v) || v <= 0) return null;
+    // menos de 1e11: número de serie de Sheets (días desde 1899-12-30, hora de Bogotá); si no, milisegundos
+    return v < 1e11 ? Date.UTC(1899, 11, 30) + Math.round(v * 86400000) + 5 * 3600 * 1000 : v;
+  }
+  const t = String(v).trim();
+  const solo = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (solo) return Date.UTC(+solo[1], +solo[2] - 1, +solo[3]) + 5 * 3600 * 1000;   // solo fecha: medianoche de Bogotá
+  let m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T]+(\d{1,2}):(\d{2}))?/);
+  if (m) return Date.UTC(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0)) + 5 * 3600 * 1000;   // Bogotá = UTC-5, sin horario de verano
+  const ms = Date.parse(t);
+  return isNaN(ms) ? null : ms;
+}
+
+// "2x Taza; 1x Mug" -> 3. Solo el número: el texto de los productos no sale en la respuesta.
+function contarItems_(v) {
+  const partes = texto_(v).split(';').map(x => x.trim()).filter(Boolean);
+  let suma = 0, con = 0;
+  partes.forEach((x) => { const m = x.match(/^(\d{1,3})\s*x\s/i); if (m) { suma += +m[1]; con++; } });
+  return con ? suma : partes.length;
+}
+
+function diaBogota_(ms) {
+  return new Date(ms - 5 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+function calcularResumen_(ahora) {
+  const hoja = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(NOMBRE_HOJA);   // no se crea nada desde una consulta
+  const cols = {};
+  let filas = [];
+  if (hoja && hoja.getLastRow() >= 2 && hoja.getLastColumn() >= 1) {
+    const ancho = hoja.getLastColumn();
+    const encabezado = hoja.getRange(1, 1, 1, ancho).getValues()[0];
+    for (let i = 0; i < encabezado.length; i++) {
+      const k = normalizar_(encabezado[i]);
+      if (k && !(k in cols)) cols[k] = i;
+    }
+    // Si hay más de MAX filas se leen las ÚLTIMAS (las más recientes)
+    const ultima = hoja.getLastRow();
+    const inicio = Math.max(2, ultima - MAX_FILAS_RESUMEN + 1);
+    filas = hoja.getRange(inicio, 1, ultima - inicio + 1, ancho).getValues();
+  }
+  const valor = (fila, nombre) => (nombre in cols ? fila[cols[nombre]] : '');
+  const dias = [];
+  const idxDia = {};
+  for (let i = DIAS_RESUMEN - 1; i >= 0; i--) {
+    const d = diaBogota_(ahora - i * 24 * 3600 * 1000);
+    idxDia[d] = dias.length;
+    dias.push({ fecha: d, pedidos: 0, ventas: 0 });
+  }
+  const t = { pedidos: 0, ventas: 0, pendientes: 0 };
+  const porEstado = Object.create(null), porTipoPago = Object.create(null), ciudades = Object.create(null), lista = [];
+  filas.forEach((fila) => {
+    const id = texto_(valor(fila, 'pedido'));
+    const total = parsearTotal_(valor(fila, 'total'));
+    if (!id && !total) return;   // fila vacía
+    const estado = texto_(valor(fila, 'estado')).slice(0, 40) || 'Sin estado';
+    const ek = normalizar_(estado);
+    const cancelado = ek === 'cancelado';
+    const ms = parsearFecha_(valor(fila, 'fecha'));
+    const ref = porEstado[ek] || (porEstado[ek] = { nombre: estado, cantidad: 0 });
+    ref.cantidad++;
+    const pago = texto_(valor(fila, 'tipo de pago')).slice(0, 40);
+    if (pago) porTipoPago[pago] = (porTipoPago[pago] || 0) + 1;
+    if (!cancelado) {
+      t.pedidos++; t.ventas += total;
+      if (ESTADOS_PENDIENTES.indexOf(ek) >= 0 || ek === 'sin estado') t.pendientes++;
+      const ciudad = texto_(valor(fila, 'ciudad')).slice(0, 40) || 'Sin ciudad';
+      const ck = normalizar_(ciudad);
+      const c = ciudades[ck] || (ciudades[ck] = { ciudad: ciudad, pedidos: 0, ventas: 0 });
+      c.pedidos++; c.ventas += total;
+      if (ms !== null) {
+        const pos = idxDia[diaBogota_(ms)];
+        if (pos !== undefined) { dias[pos].pedidos++; dias[pos].ventas += total; }
+      }
+    }
+    lista.push({
+      pedido: id.slice(0, 30), ms: ms === null ? -Infinity : ms, fecha: ms === null ? '' : new Date(ms).toISOString(),
+      estado: estado, total: total, items: contarItems_(valor(fila, 'productos'))
+    });
+  });
+  lista.sort((a, b) => b.ms - a.ms);
+  const top = Object.keys(ciudades).map(k => ciudades[k])
+    .sort((a, b) => b.pedidos - a.pedidos || b.ventas - a.ventas).slice(0, 5);
+  return {
+    ok: true,
+    generado: new Date(ahora).toISOString(),
+    totales: t,
+    porDia: dias,
+    porCiudad: top,
+    porEstado: Object.keys(porEstado).reduce((o, k) => { o[porEstado[k].nombre] = porEstado[k].cantidad; return o; }, Object.create(null)),
+    porTipoPago: porTipoPago,
+    ultimos: lista.slice(0, 10).map(x => ({ pedido: x.pedido, fecha: x.fecha, estado: x.estado, total: x.total, items: x.items }))
+  };
 }
 
 // ---------- Correo ----------

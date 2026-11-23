@@ -95,6 +95,7 @@ const archivo = (nombre, id, edadDias) => {
 
 test('doGet responde ok', () => {
   assert.equal(crearEntorno().sandbox.doGet().texto, 'ok');
+  assert.equal(crearEntorno().sandbox.doGet({ parameter: {} }).texto, 'ok');
 });
 
 test('guarda una fila (13 columnas + autorización), recalcula el total y manda correo', () => {
@@ -431,4 +432,283 @@ test('con la pestaña ya existente, doPost no vuelve a formatear', () => {
   env.sandbox.doPost({ postData: { contents: JSON.stringify(pedido()) } });
   assert.equal(env.hojas.get('Pedidos').reglas, null);
   assert.ok(!env.hojas.has('Resumen'));
+});
+
+// ---------- doGet: resumen para el admin (solo agregados, sin datos personales) ----------
+
+const TOKEN = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8';
+const CAB = ['Pedido', 'Fecha', 'Nombre', 'Celular', 'Ciudad', 'Dirección', 'Referencias', 'Conjunto cerrado',
+  'Tipo de pago', 'Productos', 'Total', 'Estado', 'Notas', 'Autorización datos'];
+
+function entornoResumen({ token = TOKEN, encabezado = CAB, filas = [], sinHoja = false } = {}) {   // filas puede ser un arreglo grande
+  const cache = new Map();
+  const ttls = new Map();
+  const props = new Map();
+  if (token !== null) props.set('ADMIN_TOKEN', token);
+  const log = [];
+  let uuid = 0;
+  const todas = [encabezado, ...filas];
+  const hoja = {
+    getLastRow: () => todas.length,
+    getLastColumn: () => Math.max(...todas.map(f => f.length)),
+    getRange: (r, c, n, w) => ({ getValues: () => todas.slice(r - 1, r - 1 + n).map(f => Array.from({ length: w }, (_, i) => (f[c - 1 + i] === undefined ? '' : f[c - 1 + i]))) })
+  };
+  const sandbox = {
+    console: { log() {}, error() {}, warn() {} },
+    Logger: { log: (m) => log.push(m) },
+    ContentService: {
+      MimeType: { JSON: 'json' },
+      createTextOutput: (t) => { const o = { texto: t, setMimeType(m) { o.mime = m; return o; } }; return o; }
+    },
+    CacheService: { getScriptCache: () => ({ get: (k) => cache.get(k) ?? null, put: (k, v, t) => { cache.set(k, v); ttls.set(k, t); }, remove: (k) => cache.delete(k) }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props.get(k) ?? null, setProperty: (k, v) => props.set(k, v) }) },
+    Utilities: { getUuid: () => 'aaaaaaaa-bbbb-cccc-dddd-' + String(++uuid).padStart(12, 'e'), formatDate: () => '2026-11-22' },
+    SpreadsheetApp: { getActiveSpreadsheet: () => ({ getSheetByName: () => (sinHoja ? null : hoja) }) }
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'apps-script', 'Codigo.gs'), 'utf8'), sandbox);
+  const get = (params) => JSON.parse(sandbox.doGet({ parameter: params }).texto);
+  return { sandbox, cache, ttls, props, log, get };
+}
+
+const hace = (dias, horas = 0) => new Date(Date.now() - dias * DIA - horas * 3600 * 1000);
+const fila = (o = {}) => {
+  const d = { Pedido: 'SM-261120-AAAA', Fecha: hace(0, 1), Nombre: 'Juan Pérez Gómez', Celular: '3001234567', Ciudad: 'Bogotá',
+    'Dirección': 'Calle 99 # 1-2', Referencias: 'Casa azul', 'Conjunto cerrado': 'No', 'Tipo de pago': 'Contraentrega',
+    Productos: '2x Taza', Total: 50000, Estado: 'Nuevo', Notas: '', 'Autorización datos': 'Sí', ...o };
+  return CAB.map(k => d[k]);
+};
+const ok = (env, extra = {}) => env.get({ accion: 'resumen', token: TOKEN, ...extra });
+
+test('doGet sin token o con token malo: no_autorizado y ningún dato', () => {
+  const env = entornoResumen({ filas: [fila()] });
+  for (const p of [{ accion: 'resumen' }, { accion: 'resumen', token: '' }, { accion: 'resumen', token: 'malo' }, { accion: 'resumen', token: TOKEN + 'x' }, { token: TOKEN.slice(1) }]) {
+    assert.deepEqual(env.get(p), { ok: false, error: 'no_autorizado' });
+  }
+});
+
+test('doGet con token correcto devuelve el resumen en JSON', () => {
+  const env = entornoResumen({ filas: [fila()] });
+  const r = ok(env);
+  assert.equal(r.ok, true);
+  assert.equal(env.sandbox.doGet({ parameter: { accion: 'resumen', token: TOKEN } }).mime, 'json');
+  assert.deepEqual(r.totales, { pedidos: 1, ventas: 50000, pendientes: 1 });
+  assert.equal(r.porDia.length, 30);
+  assert.equal(r.porDia[29].pedidos, 1);
+  assert.equal(r.porDia[29].ventas, 50000);
+});
+
+test('sin ADMIN_TOKEN configurado (o muy corto) nadie entra, ni con token vacío o igual', () => {
+  for (const token of [null, '', 'corto']) {
+    const env = entornoResumen({ token, filas: [fila()] });
+    assert.equal(env.get({ accion: 'resumen', token: '' }).error, 'no_autorizado');
+    assert.equal(env.get({ accion: 'resumen', token: String(token) }).error, 'no_autorizado');
+  }
+});
+
+test('10 intentos fallidos bloquean: después ni el token correcto entra (ni se compara)', () => {
+  const env = entornoResumen({ filas: [fila()] });
+  for (let i = 0; i < 10; i++) assert.equal(env.get({ accion: 'resumen', token: 'x' + i }).error, 'no_autorizado');
+  assert.deepEqual(env.get({ accion: 'resumen', token: 'otro' }), { ok: false, error: 'bloqueado' });
+  assert.deepEqual(ok(env), { ok: false, error: 'bloqueado' });
+  env.cache.clear();   // pasan los 10 minutos
+  assert.equal(ok(env).ok, true);
+});
+
+test('9 fallos no bloquean todavía', () => {
+  const env = entornoResumen({ filas: [fila()] });
+  for (let i = 0; i < 9; i++) env.get({ accion: 'resumen', token: 'x' + i });
+  assert.equal(ok(env).ok, true);
+});
+
+test('acción desconocida con token válido: error, sin datos', () => {
+  const env = entornoResumen({ filas: [fila()] });
+  assert.deepEqual(env.get({ accion: 'todo', token: TOKEN }), { ok: false, error: 'accion_desconocida' });
+});
+
+test('la respuesta no contiene celular, nombre completo, dirección ni referencias', () => {
+  const filas = [fila(), fila({ Pedido: 'SM-261120-BBBB', Nombre: 'María Fernanda Rodríguez', Celular: '+57 311 555 9988', 'Dirección': 'Carrera 7 # 45-10 apto 301', Referencias: 'Portería azul', Notas: 'llamar antes' })];
+  const env = entornoResumen({ filas });
+  const texto = env.sandbox.doGet({ parameter: { accion: 'resumen', token: TOKEN } }).texto;
+  for (const secreto of ['3001234567', '311 555 9988', '3115559988', 'Pérez', 'Gómez', 'Juan', 'María', 'Rodríguez', 'Calle 99', 'Carrera 7', 'apto 301', 'Casa azul', 'Portería', 'llamar antes', 'celular', 'Celular', 'direccion', 'Dirección', 'nombre', 'referencias', TOKEN]) {
+    assert.ok(!texto.includes(secreto), 'filtró: ' + secreto);
+  }
+  const r = JSON.parse(texto);
+  for (const u of r.ultimos) assert.deepEqual(Object.keys(u).sort(), ['estado', 'fecha', 'items', 'pedido', 'total']);
+  // tampoco en las respuestas de error
+  assert.ok(!JSON.stringify(env.get({ accion: 'resumen', token: 'x' })).includes('Pérez'));
+});
+
+test('lee por nombre de encabezado: columnas en otro orden, extra o faltantes', () => {
+  const enc = ['Extra', 'Total', 'Estado', 'Ciudad', 'Pedido'];
+  const env = entornoResumen({ encabezado: enc, filas: [['x', 1000, 'Entregado', 'Cali', 'SM-1'], ['y', 2500, 'Enviado', 'cali ', 'SM-2']] });
+  const r = ok(env);
+  assert.deepEqual(r.totales, { pedidos: 2, ventas: 3500, pendientes: 0 });
+  assert.deepEqual([...r.porCiudad].map(c => [c.ciudad, c.pedidos, c.ventas]), [['Cali', 2, 3500]]);
+  assert.deepEqual({ ...r.porEstado }, { Entregado: 1, Enviado: 1 });
+  assert.equal(r.ultimos[0].items, 0);   // columna faltante tolerada
+  assert.equal(r.ultimos[0].fecha, '');
+});
+
+test('encabezados con mayúsculas, espacios o tildes distintas también se reconocen', () => {
+  const env = entornoResumen({ encabezado: [' PEDIDO ', 'total', 'ESTADO', 'Tipo de Pago'], filas: [['SM-1', 100, 'Nuevo', 'Anticipado']] });
+  const r = ok(env);
+  assert.equal(r.totales.ventas, 100);
+  assert.deepEqual({ ...r.porTipoPago }, { Anticipado: 1 });
+});
+
+test('hoja vacía (solo encabezado) o inexistente: ceros y listas vacías', () => {
+  for (const env of [entornoResumen({ filas: [] }), entornoResumen({ sinHoja: true })]) {
+    const r = ok(env);
+    assert.deepEqual(r.totales, { pedidos: 0, ventas: 0, pendientes: 0 });
+    assert.equal(r.porDia.length, 30);
+    assert.ok(r.porDia.every(d => d.pedidos === 0 && d.ventas === 0));
+    assert.deepEqual([...r.ultimos], []);
+    assert.deepEqual([...r.porCiudad], []);
+  }
+});
+
+test('el Total se entiende como número, texto con $ y puntos, o coma', () => {
+  const casos = [[45000, 45000], ['45000', 45000], ['$ 45.000', 45000], ['$45.000,50', 45000.5], ['45,000', 45000], ['1.234.567', 1234567], ['abc', 0], ['', 0], [-5, 0], [1e99, 1e12], ['999999999999999999', 1e12], [Infinity, 0]];
+  const env = entornoResumen({ filas: casos.map(([t], i) => fila({ Pedido: 'SM-' + i, Total: t })) });
+  const r = ok(env);
+  assert.equal(r.totales.ventas, casos.reduce((a, c) => a + c[1], 0));
+  assert.equal(r.totales.pedidos, casos.length);
+});
+
+test('cancelados no suman a pedidos ni ventas; pendientes solo Nuevo, Pago verificado y En preparación', () => {
+  const estados = ['Nuevo', 'Pago verificado', 'En preparación', 'Enviado', 'Entregado', 'Cancelado'];
+  const env = entornoResumen({ filas: estados.map((e, i) => fila({ Pedido: 'SM-' + i, Estado: e, Total: 1000 })) });
+  const r = ok(env);
+  assert.deepEqual(r.totales, { pedidos: 5, ventas: 5000, pendientes: 3 });
+  assert.equal(r.porEstado.Cancelado, 1);
+});
+
+test('porDia agrupa por día de Bogotá, ignora fechas viejas o ilegibles; porCiudad top 5', () => {
+  const ciudades = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
+  const filas = ciudades.map((c, i) => fila({ Pedido: 'SM-' + i, Ciudad: c, Total: 1000 * (i + 1) }));
+  filas.push(fila({ Pedido: 'SM-v', Fecha: hace(90), Total: 1 }), fila({ Pedido: 'SM-r', Fecha: 'no es fecha', Total: 1 }), fila({ Pedido: 'SM-s', Fecha: (() => { const b = new Date(Date.now() - 5 * 3600 * 1000); const p2 = (n) => String(n).padStart(2, '0'); return `${p2(b.getUTCDate())}/${p2(b.getUTCMonth() + 1)}/${b.getUTCFullYear()} 00:01`; })(), Total: 1 }));
+  const r = ok(entornoResumen({ filas }));
+  assert.equal(r.porDia.reduce((a, d) => a + d.pedidos, 0), 8);   // 7 de hoy + el de texto dd/mm de hoy
+  assert.equal(r.totales.pedidos, 10);
+  assert.equal(r.porCiudad.length, 5);
+  assert.ok(r.porCiudad[0].pedidos >= r.porCiudad[4].pedidos);
+});
+
+test('ultimos: máximo 10, el más nuevo primero, sin ciudad ni texto de productos (solo número de ítems)', () => {
+  const filas = Array.from({ length: 15 }, (_, i) => fila({ Pedido: 'SM-' + i, Fecha: hace(i), Ciudad: 'Soacha', Productos: '2x Taza <b>; 1x Mug; 3x Gorra' }));
+  const env = entornoResumen({ filas });
+  const r = ok(env);
+  assert.equal(r.ultimos.length, 10);
+  assert.equal(r.ultimos[0].pedido, 'SM-0');
+  assert.equal(r.ultimos[9].pedido, 'SM-9');
+  assert.equal(r.ultimos[0].items, 6);
+  const u = JSON.stringify(r.ultimos);
+  assert.ok(!u.includes('Soacha') && !u.includes('Taza') && !u.includes('ciudad') && !u.includes('productos'));
+});
+
+test('items: suma cantidades; sin prefijo cuenta segmentos; vacío es 0', () => {
+  const env = entornoResumen({ filas: [fila({ Pedido: 'A', Fecha: hace(0, 1), Productos: '2x Taza; 1x Mug' }), fila({ Pedido: 'B', Fecha: hace(0, 2), Productos: 'Taza; Mug' }), fila({ Pedido: 'C', Fecha: hace(0, 3), Productos: '' })] });
+  assert.deepEqual([...ok(env).ultimos].map(u => u.items), [3, 2, 0]);
+});
+
+test('el resumen se guarda 60 s en caché, pero solo después de autorizar', () => {
+  const env = entornoResumen({ filas: [fila()] });
+  env.get({ accion: 'resumen', token: 'malo' });
+  assert.equal(env.cache.get('resumen_v1'), undefined);
+  ok(env);
+  assert.ok(env.cache.get('resumen_v1'));
+  assert.equal(env.get({ accion: 'resumen', token: 'malo' }).ok, false);   // la caché no abre la puerta
+});
+
+test('setupToken guarda una clave larga al azar y la muestra una sola vez', () => {
+  const env = entornoResumen({ token: null });
+  env.sandbox.setupToken();
+  const t = env.props.get('ADMIN_TOKEN');
+  assert.match(t, /^[0-9a-z]{32,}$/);
+  assert.equal(env.log.length, 1);
+  assert.ok(env.log[0].includes(t));
+  assert.equal(env.get({ accion: 'resumen', token: t }).ok, true);
+});
+
+test('el repositorio no trae ninguna clave: el código solo la lee de las Propiedades del script', () => {
+  const codigo = fs.readFileSync(path.join(__dirname, '..', 'apps-script', 'Codigo.gs'), 'utf8');
+  assert.ok(!/ADMIN_TOKEN\s*=\s*['"]/.test(codigo));
+  assert.ok(codigo.includes("getProperty('ADMIN_TOKEN')"));
+});
+
+// ---------- Revisión de seguridad: ventana fija, solicitudes vacías, límite de filas, fechas, estados ----------
+
+test('solicitudes sin token ni accion devuelven ok y NO cuentan como fallo (20 seguidas no bloquean)', () => {
+  const env = entornoResumen({ filas: [fila()] });
+  for (let i = 0; i < 20; i++) assert.equal(env.sandbox.doGet({ parameter: {} }).texto, 'ok');
+  assert.equal(env.sandbox.doGet({}).texto, 'ok');
+  assert.equal(env.cache.get('adm_fallos'), undefined);
+  assert.equal(ok(env).ok, true);
+  // pero con token o con accion sí cuentan
+  entornoResumen();
+  const e2 = entornoResumen();
+  e2.get({ accion: 'resumen' });
+  assert.match(e2.cache.get('adm_fallos'), /^1\|\d+$/);
+});
+
+test('ventana fija: un fallo nuevo no alarga el castigo; pasados 10 min desde el PRIMER fallo se libera', () => {
+  const env = entornoResumen({ filas: [fila()] });
+  const primero = Date.now() - 9 * 60 * 1000;
+  env.cache.set('adm_fallos', '9|' + primero);
+  assert.equal(env.get({ accion: 'resumen', token: 'x' }).error, 'no_autorizado');   // décimo fallo
+  assert.equal(env.cache.get('adm_fallos'), '10|' + primero);                           // mismo "primero"
+  assert.ok(env.ttls.get('adm_fallos') <= 61 && env.ttls.get('adm_fallos') >= 1, 'caduca al cumplirse los 10 min del primero, no 10 min después');
+  assert.equal(ok(env).error, 'bloqueado');
+  env.cache.set('adm_fallos', '10|' + (Date.now() - 10 * 60 * 1000 - 1000));            // ya pasaron 10 min del primero
+  assert.equal(ok(env).ok, true);
+  assert.equal(env.get({ accion: 'resumen', token: 'x' }).error, 'no_autorizado');
+  assert.match(env.cache.get('adm_fallos'), /^1\|/);                                    // contador reiniciado
+});
+
+test('un fallo lento no mantiene bloqueado al dueño: la caducidad depende del primer fallo', () => {
+  const env = entornoResumen();
+  env.get({ accion: 'resumen', token: 'x' });
+  assert.equal(env.ttls.get('adm_fallos'), 600);
+  env.cache.set('adm_fallos', '3|' + (Date.now() - 300 * 1000));
+  env.get({ accion: 'resumen', token: 'x' });
+  assert.ok(env.ttls.get('adm_fallos') <= 300);
+});
+
+test('con más de 20000 filas se leen las ÚLTIMAS 20000, no las primeras', () => {
+  const filas = Array.from({ length: 20005 }, (_, i) => fila({ Pedido: 'SM-' + i, Total: i < 5 ? 1000000 : 1, Fecha: hace(0, 1) }));
+  const r = ok(entornoResumen({ filas }));
+  assert.equal(r.totales.pedidos, 20000);
+  assert.equal(r.totales.ventas, 20000);       // las 5 filas viejas (1.000.000 c/u) quedaron fuera
+  assert.equal(ok(entornoResumen({ filas: filas.slice(0, 3) })).totales.pedidos, 3);
+});
+
+test('fechas: número < 1e11 es serial de Sheets, >= 1e11 son milisegundos, aaaa-mm-dd es medianoche de Bogotá', () => {
+  const cuenta = (valor) => ok(entornoResumen({ filas: [fila({ Fecha: valor })] })).porDia.reduce((a, d) => a + d.pedidos, 0);
+  const serialAhora = (Date.now() - 5 * 3600 * 1000 - Date.UTC(1899, 11, 30)) / 86400000 - 0.01;
+  assert.equal(cuenta(serialAhora), 1);
+  assert.equal(cuenta(Date.now() - 3600 * 1000), 1);             // milisegundos
+  assert.equal(cuenta(45000), 0);                                 // serial de 2023: fuera de los 30 días
+  assert.equal(cuenta(0), 0);
+  const b = new Date(Date.now() - 5 * 3600 * 1000);
+  assert.equal(cuenta(b.toISOString().slice(0, 10)), 1);          // hoy en Bogotá, solo fecha
+  assert.equal(cuenta('2020-01-01'), 0);
+  // la medianoche de Bogotá es 05:00 UTC: se ve en "ultimos"
+  const r = ok(entornoResumen({ filas: [fila({ Fecha: '2026-11-20' })] }));
+  assert.equal(r.ultimos[0].fecha, '2026-11-20T05:00:00.000Z');
+  const r2 = ok(entornoResumen({ filas: [fila({ Fecha: 46000 })] }));
+  assert.equal(r2.ultimos[0].fecha, new Date(Date.UTC(1899, 11, 30) + 46000 * 86400000 + 5 * 3600 * 1000).toISOString());
+});
+
+test('porEstado agrupa "Nuevo" y "nuevo " y muestra el primer texto original', () => {
+  const env = entornoResumen({ filas: [fila({ Pedido: 'a', Estado: 'Nuevo' }), fila({ Pedido: 'b', Estado: 'nuevo ' }), fila({ Pedido: 'c', Estado: 'EN PREPARACIÓN' }), fila({ Pedido: 'd', Estado: 'en preparacion' })] });
+  const r = ok(env);
+  assert.deepEqual({ ...r.porEstado }, { Nuevo: 2, 'EN PREPARACIÓN': 2 });
+  assert.equal(r.totales.pendientes, 4);
+});
+
+test('el código no usa caracteres combinantes literales en la expresión de acentos', () => {
+  const codigo = fs.readFileSync(path.join(__dirname, '..', 'apps-script', 'Codigo.gs'), 'utf8');
+  assert.ok(codigo.includes('/[\\u0300-\\u036f]/g'));
+  assert.ok(!/[\u0300-\u036f]/.test(codigo));
 });

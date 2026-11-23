@@ -39,9 +39,10 @@ test('gaIdValido y debeCargar', () => {
   assert.equal(debeCargar('', 'aceptado'), false);
 });
 
-test('la configuración viene apagada y congelada', () => {
+test('la configuración está congelada y trae un ID de medición válido (o vacío si se apaga)', () => {
   assert.ok(Object.isFrozen(ANALYTICS_CONFIG));
-  assert.equal(ANALYTICS_CONFIG.gaId, '');
+  assert.ok(ANALYTICS_CONFIG.gaId === '' || gaIdValido(ANALYTICS_CONFIG.gaId), 'gaId debe ser vacío o G-XXXXXXXX');
+  assert.equal(ANALYTICS_CONFIG.gaId, 'G-E5BWNQY0P9', 'ID de la propiedad GA4 de la tienda (el 0 es cero)');
 });
 
 test('sin ID válido no hace nada: ni script, ni banner, ni tocar el almacenamiento', () => {
@@ -112,7 +113,7 @@ test('las páginas públicas cargan analytics-config.js y analytics.js (defer); 
   for (const page of ['index.html', 'ofertas.html', 'product.html', 'categorias.html', 'carrito.html', 'personalizar.html', '404.html']) {
     const html = read(page);
     const base = page === '404.html' ? '/' : '';
-    assert.ok(html.includes(`<script src="${base}analytics-config.js?v=1"></script>`), `${page}: falta analytics-config.js`);
+    assert.ok(html.includes(`<script src="${base}analytics-config.js?v=2"></script>`), `${page}: falta analytics-config.js`);
     assert.ok(html.includes(`<script src="${base}analytics.js?v=1" defer></script>`), `${page}: falta analytics.js`);
     assert.ok(html.indexOf('analytics-config.js') < html.indexOf('analytics.js?'), `${page}: la configuración va primero`);
   }

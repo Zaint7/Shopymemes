@@ -330,11 +330,61 @@ function mergeProducts(base, changes, version = 0) {
   return { version: newest, products: [...byId.values()].sort((a, b) => b.id - a.id) };
 }
 
+// ---------- Pedidos y ventas del admin (respuesta del script de Google; nunca se confía en su forma) ----------
+const RESUMEN_ERRORES = ['no_autorizado', 'bloqueado', 'accion_desconocida', 'error_interno'];
+const RESUMEN_MAX = 1e12;
+
+function numeroSeguro_(v) {
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) && n > 0 ? Math.min(n, RESUMEN_MAX) : 0;
+}
+
+function textoSeguro_(v, max) {
+  return (typeof v === 'string' || typeof v === 'number') ? String(v).replace(/[\u0000-\u001f\u007f]+/g, ' ').slice(0, max) : '';
+}
+
+function contadores_(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return [];
+  return Object.keys(obj).slice(0, 12).map(k => ({ nombre: textoSeguro_(k, 40), cantidad: numeroSeguro_(obj[k]) }));
+}
+
+// JSON (o texto JSON) -> { ok:true, generado, totales, porDia[], porCiudad[], porEstado[], porTipoPago[], ultimos[] }
+//                      o { ok:false, error }  (error: no_autorizado | bloqueado | accion_desconocida | error_interno | formato)
+function parsearResumenPedidos(json) {
+  let d = json;
+  if (typeof d === 'string') {
+    try { d = JSON.parse(d); } catch (e) { return { ok: false, error: 'formato' }; }
+  }
+  if (!d || typeof d !== 'object' || Array.isArray(d)) return { ok: false, error: 'formato' };
+  if (d.ok === false) return { ok: false, error: RESUMEN_ERRORES.includes(d.error) ? d.error : 'formato' };
+  if (d.ok !== true || !d.totales || typeof d.totales !== 'object') return { ok: false, error: 'formato' };
+  const lista = (v, max) => (Array.isArray(v) ? v.slice(0, max).filter(x => x && typeof x === 'object') : []);
+  return {
+    ok: true,
+    generado: textoSeguro_(d.generado, 40),
+    totales: { pedidos: numeroSeguro_(d.totales.pedidos), ventas: numeroSeguro_(d.totales.ventas), pendientes: numeroSeguro_(d.totales.pendientes) },
+    porDia: lista(d.porDia, 31).map(x => ({ fecha: /^\d{4}-\d{2}-\d{2}$/.test(x.fecha) ? x.fecha : '', pedidos: numeroSeguro_(x.pedidos), ventas: numeroSeguro_(x.ventas) })),
+    porCiudad: lista(d.porCiudad, 5).map(x => ({ ciudad: textoSeguro_(x.ciudad, 60), pedidos: numeroSeguro_(x.pedidos), ventas: numeroSeguro_(x.ventas) })),
+    porEstado: contadores_(d.porEstado),
+    porTipoPago: contadores_(d.porTipoPago),
+    ultimos: lista(d.ultimos, 10).map(x => ({
+      pedido: textoSeguro_(x.pedido, 30), fecha: textoSeguro_(x.fecha, 40), estado: textoSeguro_(x.estado, 40),
+      total: numeroSeguro_(x.total), items: numeroSeguro_(x.items)
+    }))
+  };
+}
+
+// Dinero con el mismo formato que el resto de la tienda ($45.000); valores raros -> $0
+function formatearVentas(n) {
+  return formatPrice(Math.round(numeroSeguro_(n)));
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     LIMITS, PERSONALIZACION_TIPOS, escapeHtml, formatPrice, slugify, isValidImageUrl, validateProduct, validateCategory,
     maxQtyFor, priceHtml, productCardHtml, imgUrl, imgSrcset, imgOrigAttr, imgFallbackOriginal, isValidUpdatedAt,
     isValidCatalog, pickNewerCatalog, mergeProducts, calcularMetricasCatalogo,
-    estimarConsumo, estadoConsumo, CONSUMO_LIMITES, CONSUMO_SUPUESTOS
+    estimarConsumo, estadoConsumo, CONSUMO_LIMITES, CONSUMO_SUPUESTOS,
+    parsearResumenPedidos, formatearVentas
   };
 }

@@ -139,6 +139,29 @@ Qué significa cada estado (el color sale solo al elegirlo en la lista):
 
 Además, **Pago anticipado** se ve en naranja suave y **Contraentrega** en verde suave. Nota: `aplicarFormato` reemplaza las reglas de color de la pestaña `Pedidos`; si algún día añades reglas propias, vuelve a ponerlas después.
 
+## 8c. Ver pedidos y ventas en el admin
+
+En el panel de administración, pestaña **Métricas**, hay una tarjeta **Pedidos y ventas** con el total de pedidos, las ventas, los pendientes, una gráfica de los últimos 30 días, las ciudades que más compran y los últimos 10 pedidos (solo número de pedido, fecha, estado, total y cantidad de productos). **No muestra teléfonos, nombres completos, direcciones ni referencias de tus clientes**: solo totales. Para que nadie más pueda verla, el script pide una **clave de métricas** que solo tú conoces.
+
+La clave funciona como una contraseña: **no la pegues en el repositorio, en el código de la tienda, en chats ni en correos, y no la compartas.** Vive únicamente dentro de tu script de Google (en sus "Propiedades"), nunca en la tienda.
+
+🙋 **Tu turno — hacerlo una sola vez**
+
+1. Abre tu hoja y entra a **Extensiones > Apps Script**. Borra el contenido y pega el `Codigo.gs` nuevo completo. Guarda (`Ctrl + S`).
+2. En la lista de funciones (arriba) elige **`setupToken`** y pulsa **Ejecutar**. Si Google pide permisos, acéptalos (es la misma pantalla de siempre: Configuración avanzada > Ir a… > Permitir).
+3. Abajo se abre el **Registro de ejecución**. Busca la línea **«Tu clave de métricas…»** y **copia la clave** (una cadena larga de letras y números). Se muestra una sola vez; guárdala en tu gestor de contraseñas. Si la pierdes, no pasa nada: repite el paso 2 y obtienes una nueva.
+4. Publica la versión nueva (sin esto la tienda no la ve): **Implementar > Administrar implementaciones**, pulsa el lápiz ✏, en **Versión** elige **Nueva versión** y pulsa **Implementar**. La URL `/exec` se mantiene igual.
+5. Abre el admin de la tienda, pestaña **Métricas**, tarjeta **Pedidos y ventas**. Pega la clave en **Clave de métricas** y pulsa **Conectar**.
+
+Cosas que conviene saber:
+
+- La clave se guarda solo mientras esa pestaña del navegador siga abierta. Al cerrarla, te la vuelve a pedir. Con **Cerrar sesión de métricas** la borras al instante (úsalo si entras desde un computador ajeno).
+- Si te equivocas **10 veces en 10 minutos** (sumando los intentos de cualquier persona), el script se bloquea hasta que pasen 10 minutos desde el primer error y luego se libera solo; espera y vuelve a intentar. El inconveniente que queda: como el límite cuenta los errores de cualquier persona, alguien que conozca la URL del script podría dejarte fuera unos minutos (nunca ver tus datos).
+- La clave viaja en la dirección (URL) de la consulta, protegida por HTTPS, por lo que puede quedar en los registros de Google; si tienes alguna duda de que se haya visto, cámbiala con `setupToken` (siguiente punto).
+- Los números pueden tardar hasta 1 minuto en actualizarse.
+- **Cambiar la clave** (por ejemplo si crees que alguien la vio): corre `setupToken` otra vez. La anterior deja de funcionar al instante. Después copia la nueva del registro y pégala en el admin. No hace falta publicar una versión nueva.
+- Los pedidos en estado **Cancelado** no cuentan en pedidos ni en ventas. Si cambias el nombre de las columnas de la hoja, el resumen las busca por su nombre (Pedido, Fecha, Ciudad, Tipo de pago, Productos, Total, Estado), así que déjalos como están.
+
 ## 9. Si cambias el código del script
 
 Editar el código y guardar **no** actualiza la URL pública. Debes crear una versión nueva:
@@ -165,3 +188,6 @@ La URL `/exec` se mantiene igual, no hay que tocar `pedidos-config.js`. (Si en c
 - **Quieres cambiar la hora de la copia.** Cambia `HORA_COPIA` en el código y corre `instalarTriggers` de nuevo.
 - **Un cliente pide que borres sus datos (Ley 1581).** Borra su fila en la hoja `Pedidos` y también en las copias de respaldo: están en Drive, carpeta **Respaldo Shopymemes** (hasta 30 copias `Pedidos AAAA-MM-DD`). Puedes abrir cada una y borrar la fila, o mandar esas copias a la papelera (la copia de hoy se vuelve a crear sola sin esa fila). Borra también el chat de WhatsApp y el correo de aviso de ese pedido.
 - **Pedidos con "ID repetido" en Notas.** Si dos clientes distintos generaran el mismo número de pedido (casi imposible), el segundo se guarda con un sufijo (`-2`) y una nota. Nunca se descarta un pedido.
+- **En el admin sale «No se pudo conectar (¿publicaste la nueva versión del script?)».** Casi siempre es que falta el paso 4 de la sección 8c (publicar una **Nueva versión**), o que `hojaUrl` en `pedidos-config.js` está vacía o mal. Abre la URL `/exec?accion=resumen&token=x` en el navegador: si ves `no_autorizado`, el script nuevo está bien publicado (ojo: ese intento cuenta como uno de los 10; abrir la URL `/exec` sola no cuenta).
+- **«Clave incorrecta».** Copiaste mal la clave o corriste `setupToken` otra vez (la clave cambia cada vez). Mira el último registro de ejecución de `setupToken` y pega esa.
+- **«Tardó demasiado, intenta de nuevo; el script puede estar despertando».** Google duerme los scripts que no se usan y la primera consulta puede tardar; espera unos segundos y pulsa **Conectar** otra vez.

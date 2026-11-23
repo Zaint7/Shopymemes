@@ -68,7 +68,7 @@ test('toda página que carga shared.js lo pide con versión (si no, el navegador
   for (const page of pages) {
     const html = read(page);
     if (!html.includes('shared.js"') && !html.includes('shared.js?')) continue;
-    assert.ok(html.includes('src="shared.js?v=9"'), `${page}: debe cargar shared.js?v=9`);
+    assert.ok(html.includes('src="shared.js?v=11"'), `${page}: debe cargar shared.js?v=11`);
   }
 });
 
@@ -190,7 +190,7 @@ test('los links que abren otra pestaña usan rel="noopener"', () => {
 
 test('personalizar.html carga los scripts del visor con versión y en el orden correcto', () => {
   const html = read('personalizar.html');
-  const orden = ['shared.js?v=9', 'products.js?v=4', 'cart.js', 'layout.js', 'visor-core.js?v=2', 'foto-archivo.js?v=1', 'visor.js?v=5', 'recorte.js?v=3', 'personalizar.js?v=4'];
+  const orden = ['shared.js?v=11', 'products.js?v=4', 'cart.js', 'layout.js', 'visor-core.js?v=2', 'foto-archivo.js?v=1', 'visor.js?v=5', 'recorte.js?v=3', 'personalizar.js?v=4'];
   let anterior = -1;
   for (const src of orden) {
     const i = html.indexOf(`src="${src}"`);
@@ -330,7 +330,7 @@ test('visor.js: silueta real del cojín (40-80 puntos) y escena de madera en cac
 
 test('carrito.html carga pedidos-config.js y pedido.js (?v=1) después de layout.js y usa el formulario de pedido', () => {
   const html = read('carrito.html');
-  const orden = ['shared.js?v=9', 'products.js?v=4', 'cart.js', 'layout.js', 'pedidos-config.js?v=1', 'pedido.js?v=1'];
+  const orden = ['shared.js?v=11', 'products.js?v=4', 'cart.js', 'layout.js', 'pedidos-config.js?v=1', 'pedido.js?v=1'];
   let anterior = -1;
   for (const src of orden) {
     const i = html.indexOf(`src="${src}"`);
@@ -373,9 +373,9 @@ test('carrito.html: los campos del checkout tienen caret oscuro y cursor de text
   assert.ok(!/(^|\n)\s*(body|input|html)\s*\{[^}]*cursor:\s*url/.test(html), 'el cursor solo aplica dentro del modal');
 });
 
-test('las páginas que muestran fotos usan imgUrl/imgSrcset (variantes optimizadas) y cargan shared.js?v=9', () => {
+test('las páginas que muestran fotos usan imgUrl/imgSrcset (variantes optimizadas) y cargan shared.js?v=11', () => {
   for (const page of ['index.html', 'ofertas.html', 'product.html', 'carrito.html', 'categorias.html']) {
-    assert.ok(read(page).includes('src="shared.js?v=9"'), `${page}: debe cargar shared.js?v=9`);
+    assert.ok(read(page).includes('src="shared.js?v=11"'), `${page}: debe cargar shared.js?v=11`);
   }
   // index/ofertas pintan con productCardHtml (que usa imgUrl); las demás llaman al helper directo
   assert.ok(read('shared.js').includes('imgUrl(p.image, 640)'));
@@ -395,13 +395,13 @@ test('admin.html tiene la pestaña Métricas con enlaces rápidos y sin lecturas
   const html = read('admin.html');
   assert.ok(html.includes('id="tabMetricsBtn"') && html.includes('id="metricsView"'));
   assert.ok(html.includes('aria-pressed="false" aria-controls="metricsView"'));
-  assert.ok(html.includes('src="shared.js?v=9"'));
+  assert.ok(html.includes('src="shared.js?v=11"'));
   for (const url of ['https://console.firebase.google.com/project/shopymemes/firestore/usage', 'https://console.cloudinary.com/', 'https://drive.google.com/', 'https://search.google.com/search-console']) {
     const a = html.match(new RegExp(`<a href="${url.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&')}"[^>]*>`));
     assert.ok(a, `falta el enlace ${url}`);
     assert.match(a[0], /target="_blank" rel="noopener"/);
   }
-  assert.ok(!html.includes('hojaUrl'), 'el enlace de la hoja no usa la URL de Apps Script');
+  assert.ok(!/href="[^"]*hojaUrl/.test(html), 'el enlace de la hoja no usa la URL de Apps Script');
   const fn = html.slice(html.indexOf('function renderMetricas()'), html.indexOf('// ---------- Cuadrícula de categorías'));
   assert.ok(fn.includes('calcularMetricasCatalogo(productsCache)'));
   assert.ok(!/getDocs|getDoc\(|onSnapshot|collection\(/.test(fn), 'las métricas no leen Firestore');
@@ -420,3 +420,25 @@ test('admin.html tiene el estimador de consumo aproximado, avisa que es estimaci
   assert.ok(/ETIQUETA_ESTADO = \{ verde: '✓ Bien', ambar: '! Atención', rojo: '✕ Riesgo' \}/.test(html), 'el estado lleva texto, no solo color');
   assert.ok(html.includes('value="100"') && html.includes('value="4"') && html.includes('value="3"'));
 });
+
+test('admin.html: tarjeta Pedidos y ventas con clave en sessionStorage (nunca localStorage ni consola) y consulta segura', () => {
+  const html = read('admin.html');
+  for (const id of ['pedForm', 'pedClave', 'pedConectar', 'pedEstado', 'pedSalir', 'pedResultado']) assert.ok(html.includes(`id="${id}"`), id);
+  assert.ok(html.includes('Pedidos y ventas') && html.includes('Clave de métricas') && html.includes('Conectar') && html.includes('Cerrar sesión de métricas'));
+  assert.match(html, /id="pedClave"[^>]*type="password"|type="password"[^>]*id="pedClave"/);
+  assert.ok(html.includes('src="pedidos-config.js?v=1"'));
+  const bloque = html.slice(html.indexOf('// ---------- Pedidos y ventas'), html.indexOf('// ---------- Métricas: solo usan productsCache'));
+  assert.ok(bloque.includes('sessionStorage') && !/localStorage/.test(bloque), 'solo sessionStorage');
+  assert.ok(!/console\./.test(bloque), 'nada se registra en consola');
+  assert.ok(bloque.includes("'?accion=resumen&token=' + encodeURIComponent(clave)"));
+  assert.ok(bloque.includes("cache: 'no-store'") && bloque.includes("credentials: 'omit'") && bloque.includes('AbortController') && bloque.includes('15000'));
+  assert.ok(bloque.includes('Tardó demasiado, intenta de nuevo; el script puede estar despertando') && bloque.includes("tiempoAgotado ? 'tiempo' : 'red'"));
+  assert.ok(!/u\.productos|u\.ciudad/.test(bloque), 'los últimos pedidos no muestran ciudad ni productos');
+  for (const m of ['Clave incorrecta', 'Demasiados intentos, espera 10 minutos', 'No se pudo conectar (¿publicaste la nueva versión del script?)']) assert.ok(bloque.includes(m), m);
+  assert.ok(bloque.includes('parsearResumenPedidos(') && bloque.includes('formatearVentas('));
+  // todo texto que viene del script se escapa
+  for (const campo of ['c.ciudad', 'e.nombre', 'u.pedido', 'u.estado', 'd.fecha']) assert.ok(bloque.includes(`escapeHtml(${campo})`), `sin escapar: ${campo}`);
+  assert.ok(bloque.includes('role="img"') && bloque.includes('class="visually-hidden"'), 'gráfico accesible con tabla de respaldo');
+  assert.ok(!/ADMIN_TOKEN|[0-9a-f]{32}/i.test(html), 'ninguna clave en el HTML');
+});
+

@@ -391,3 +391,83 @@ test('estimarConsumo con catálogo vacío o basura trata todo como 0', () => {
 test('estimarConsumo expone los límites gratis usados', () => {
   assert.deepEqual({ ...CONSUMO_LIMITES }, { lecturasDia: 50000, escriturasDia: 20000, creditosCloudinaryMes: 25, correosDia: 100 });
 });
+
+// ---------- parsearResumenPedidos / formatearVentas ----------
+const { parsearResumenPedidos, formatearVentas, formatPrice } = require('../Public/shared.js');
+
+const resumenOk = () => ({
+  ok: true, generado: '2026-11-22T15:00:00.000Z', totales: { pedidos: 4, ventas: 180000, pendientes: 2 },
+  porDia: [{ fecha: '2026-11-21', pedidos: 1, ventas: 50000 }, { fecha: '2026-11-22', pedidos: 3, ventas: 130000 }],
+  porCiudad: [{ ciudad: 'Bogotá', pedidos: 3, ventas: 130000 }], porEstado: { Nuevo: 2, Enviado: 2 }, porTipoPago: { Contraentrega: 4 },
+  ultimos: [{ pedido: 'SM-1', fecha: '2026-11-22T14:00:00.000Z', estado: 'Nuevo', total: 50000, items: 2 }]
+});
+
+test('parsearResumenPedidos acepta una respuesta buena (objeto o texto) y la normaliza', () => {
+  const r = parsearResumenPedidos(resumenOk());
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.totales, { pedidos: 4, ventas: 180000, pendientes: 2 });
+  assert.deepEqual(r.porEstado, [{ nombre: 'Nuevo', cantidad: 2 }, { nombre: 'Enviado', cantidad: 2 }]);
+  assert.deepEqual(r.ultimos[0], { pedido: 'SM-1', fecha: '2026-11-22T14:00:00.000Z', estado: 'Nuevo', total: 50000, items: 2 });
+  assert.deepEqual(parsearResumenPedidos(JSON.stringify(resumenOk())), r);
+});
+
+test('parsearResumenPedidos: errores conocidos pasan, lo demás es "formato"', () => {
+  for (const e of ['no_autorizado', 'bloqueado', 'accion_desconocida', 'error_interno']) assert.deepEqual(parsearResumenPedidos({ ok: false, error: e }), { ok: false, error: e });
+  assert.deepEqual(parsearResumenPedidos({ ok: false, error: '<img src=x onerror=alert(1)>' }), { ok: false, error: 'formato' });
+  for (const malo of ['{no es json', '', null, undefined, 5, [], [1], 'null', '"x"', {}, { ok: true }, { ok: true, totales: 'x' }, { ok: 'true', totales: {} }]) {
+    assert.deepEqual(parsearResumenPedidos(malo), { ok: false, error: 'formato' }, JSON.stringify(malo));
+  }
+});
+
+test('parsearResumenPedidos tolera campos faltantes o de tipo equivocado', () => {
+  const r = parsearResumenPedidos({ ok: true, totales: { pedidos: 'x', ventas: -5, pendientes: null }, porDia: 'no', porCiudad: [null, 3, { ciudad: 7 }], porEstado: [1, 2], ultimos: { a: 1 } });
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.totales, { pedidos: 0, ventas: 0, pendientes: 0 });
+  assert.deepEqual(r.porDia, []);
+  assert.deepEqual(r.porCiudad, [{ ciudad: '7', pedidos: 0, ventas: 0 }]);
+  assert.deepEqual(r.porEstado, []);
+  assert.deepEqual(r.ultimos, []);
+  assert.equal(r.generado, '');
+});
+
+test('parsearResumenPedidos limita números enormes, largos de texto y cantidad de filas', () => {
+  const d = resumenOk();
+  d.totales.ventas = 1e300; d.totales.pedidos = Infinity;
+  d.porDia = Array.from({ length: 100 }, () => ({ fecha: '2026-01-01', pedidos: 1e21, ventas: '9'.repeat(40) }));
+  d.ultimos = Array.from({ length: 50 }, () => ({ pedido: 'x'.repeat(5000), productos: 'p'.repeat(5000), ciudad: 'c'.repeat(5000), total: 1, items: 1e30 }));
+  d.porCiudad = Array.from({ length: 20 }, () => ({ ciudad: 'a', pedidos: 1, ventas: 1 }));
+  const r = parsearResumenPedidos(d);
+  assert.equal(r.totales.ventas, 1e12);
+  assert.equal(r.totales.pedidos, 0);
+  assert.equal(r.porDia.length, 31);
+  assert.equal(r.porDia[0].pedidos, 1e12);
+  assert.equal(r.ultimos.length, 10);
+  assert.equal(r.ultimos[0].pedido.length, 30);
+  assert.equal(r.ultimos[0].items, 1e12);
+  assert.deepEqual(Object.keys(r.ultimos[0]).sort(), ['estado', 'fecha', 'items', 'pedido', 'total']);   // ciudad y productos se descartan aunque lleguen
+  assert.equal(r.porCiudad.length, 5);
+});
+
+test('parsearResumenPedidos no ejecuta ni rompe con texto malicioso (se escapa al dibujar) y fechas raras quedan vacías', () => {
+  const d = resumenOk();
+  d.porCiudad[0].ciudad = '<script>alert(1)</script>';
+  d.ultimos[0].estado = '"><img src=x onerror=alert(1)>';
+  d.porDia[0].fecha = '<b>x</b>';
+  d.porEstado = { '__proto__': 5, '<i>': 1 };
+  const r = parsearResumenPedidos(JSON.parse(JSON.stringify(d).replace('"porEstado":{', '"porEstado":{"__proto__":5,') ));
+  assert.equal(r.porCiudad[0].ciudad, '<script>alert(1)</script>');   // sigue siendo texto; la pantalla usa escapeHtml
+  assert.equal(escapeHtml(r.ultimos[0].estado), '&quot;&gt;&lt;img src=x onerror=alert(1)&gt;');
+  assert.equal(r.porDia[0].fecha, '');
+  assert.equal(Object.getPrototypeOf(r.porEstado), Array.prototype);
+});
+
+test('formatearVentas usa el formato COP de la tienda y aguanta valores raros', () => {
+  assert.equal(formatearVentas(45000), formatPrice(45000));
+  assert.match(formatearVentas(1234567), /^\$1\.234\.567$/);
+  assert.equal(formatearVentas('abc'), '$0');
+  assert.equal(formatearVentas(null), '$0');
+  assert.equal(formatearVentas(-1), '$0');
+  assert.equal(formatearVentas(NaN), '$0');
+  assert.equal(formatearVentas(1e300), formatPrice(1e12));
+  assert.equal(formatearVentas(1999.6), formatPrice(2000));
+});
