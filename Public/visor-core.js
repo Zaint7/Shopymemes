@@ -237,6 +237,49 @@ function validarColoresConfig(colores) {
   return { ok: true };
 }
 
+// ---------- Precios por tipo de producto (los edita el admin en config/visor, campo `precios`) ----------
+const PRECIO_MIN = 1000;
+const PRECIO_MAX = 500000;
+const TIPOS_PRECIO = ['llavero', 'taza', 'cojin'];
+const PRECIOS_POR_DEFECTO = Object.freeze({ llavero: 40000, taza: 40000, cojin: 40000 });
+
+function precioValido(n) {
+  return typeof n === 'number' && Number.isInteger(n) && n >= PRECIO_MIN && n <= PRECIO_MAX;
+}
+
+// $40.000 (propio: no depende de ICU del navegador)
+function precioCOP(n) {
+  return '$' + String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
+const NOMBRE_PRECIO = { llavero: 'el llavero', taza: 'la taza', cojin: 'el cojín' };
+
+// Valida lo que escribe el admin: { llavero, taza, cojin } enteros entre $1.000 y $500.000.
+function validarPrecios(precios) {
+  if (!precios || typeof precios !== 'object' || Array.isArray(precios)) return { ok: false, error: 'Configuración de precios inválida.' };
+  for (const tipo of TIPOS_PRECIO) {
+    if (!precioValido(precios[tipo])) {
+      return { ok: false, error: `El precio de ${NOMBRE_PRECIO[tipo]} debe ser un número entero entre ${precioCOP(PRECIO_MIN)} y ${precioCOP(PRECIO_MAX)}.` };
+    }
+  }
+  return { ok: true };
+}
+
+// Precios a usar: los del documento de config si son válidos (tipo por tipo); si no, los de por defecto.
+// Tolera null, documentos sin `precios`, valores raros y claves heredadas (__proto__...).
+function preciosDeConfig(cfg) {
+  const fuente = cfg && typeof cfg === 'object' && cfg.precios && typeof cfg.precios === 'object' ? cfg.precios : {};
+  const r = {};
+  for (const tipo of TIPOS_PRECIO) {
+    const v = Object.prototype.hasOwnProperty.call(fuente, tipo) ? fuente[tipo] : undefined;
+    r[tipo] = precioValido(v) ? v : PRECIOS_POR_DEFECTO[tipo];
+  }
+  return r;
+}
+
+// Textos cortos de medida de cada tipo (van en el carrito y en el pedido)
+const MEDIDA_CORTA = Object.freeze({ llavero: '4 cm x 4 cm', taza: 'pocillo estándar', cojin: '30 cm x 30 cm' });
+
 // Documento de Firestore en formato REST ({ fields: { colores: { mapValue: ... } } }) -> { colores: { taza: [], cojin: [] } }
 // o null si no tiene esa forma. Solo se leen cadenas.
 function parsearConfigVisorRest(doc) {
@@ -247,10 +290,84 @@ function parsearConfigVisorRest(doc) {
       const vals = mapa[tipo] && mapa[tipo].arrayValue && mapa[tipo].arrayValue.values;
       if (Array.isArray(vals)) colores[tipo] = vals.map(v => v && v.stringValue).filter(x => typeof x === 'string');
     }
-    return { colores };
+    // precios (opcional): integerValue llega como cadena; solo se aceptan enteros válidos, el resto cae al defecto
+    const precios = {};
+    try {
+      const pm = doc.fields.precios.mapValue.fields;
+      for (const tipo of TIPOS_PRECIO) {
+        const f = pm[tipo];
+        const n = f && (f.integerValue !== undefined ? Number(f.integerValue) : f.doubleValue);
+        if (typeof n === 'number') precios[tipo] = n;
+      }
+    } catch (e) { /* documento sin precios: se usan los de por defecto */ }
+    return { colores, precios: preciosDeConfig({ precios }) };
   } catch (e) {
     return null;
   }
+}
+
+// ---------- Config del admin (config/visor) por REST, sin SDK: una lectura, caché de 10 min, 3 s de espera ----------
+const CLAVE_CONFIG = 'sm_visor_config';
+const CONFIG_VIGENCIA_MS = 10 * 60 * 1000;
+const CONFIG_TIMEOUT_MS = 3000;
+const URL_CONFIG = 'https://firestore.googleapis.com/v1/projects/shopymemes/databases/(default)/documents/config/visor';
+
+// Respuesta REST -> { estado: 'ok', config } | { estado: 'sin-documento', config: null } | { estado: 'error' }.
+// SOLO "no existe el documento" (404) significa "usa los valores por defecto"; cualquier otra cosa (500, red, JSON raro)
+// es un error: no se debe asumir un precio.
+function resultadoConfigRest(status, json) {
+  if (status === 404) return { estado: 'sin-documento', config: null };
+  if (status !== 200) return { estado: 'error' };
+  const cfg = parsearConfigVisorRest(json);
+  return cfg ? { estado: 'ok', config: cfg } : { estado: 'error' };
+}
+
+// Config guardada (<= 10 min) o null. Un documento inexistente también se guarda (config: null).
+function configEnCache(storage, ahora) {
+  try {
+    const g = JSON.parse(storage.getItem(CLAVE_CONFIG));
+    if (g && typeof g.t === 'number' && g.t <= ahora && ahora - g.t < CONFIG_VIGENCIA_MS) {
+      return g.c === null ? { estado: 'sin-documento', config: null } : (g.c && g.c.colores ? { estado: 'ok', config: g.c } : null);
+    }
+  } catch (e) { /* sin almacenamiento o dato roto: se lee de nuevo */ }
+  return null;
+}
+
+// Lee la config (caché primero). entorno (para pruebas): { fetch, storage, ahora, AbortController }.
+async function cargarConfigVisor(entorno) {
+  const e = entorno || {};
+  const storage = e.storage || (typeof localStorage !== 'undefined' ? localStorage : null);
+  const ahora = typeof e.ahora === 'function' ? e.ahora() : Date.now();
+  const guardada = storage ? configEnCache(storage, ahora) : null;
+  if (guardada) return guardada;
+  const Control = e.AbortController || (typeof AbortController !== 'undefined' ? AbortController : null);
+  const pedir = e.fetch || (typeof fetch !== 'undefined' ? fetch : null);
+  const control = Control ? new Control() : null;
+  const reloj = control ? setTimeout(() => control.abort(), CONFIG_TIMEOUT_MS) : null;
+  try {
+    const resp = await pedir(URL_CONFIG, { credentials: 'omit', signal: control ? control.signal : undefined });
+    let json = null;
+    if (resp.status === 200) { try { json = await resp.json(); } catch (err) { return { estado: 'error' }; } }
+    const r = resultadoConfigRest(resp.status, json);
+    if (r.estado !== 'error' && storage) {
+      try { storage.setItem(CLAVE_CONFIG, JSON.stringify({ t: ahora, c: r.config })); } catch (err) { /* no pasa nada */ }
+    }
+    return r;
+  } catch (err) {
+    return { estado: 'error' };
+  } finally {
+    if (reloj) clearTimeout(reloj);
+  }
+}
+
+// Dirección del visor tras un cambio de tipo/color HECHO POR LA PERSONA: conserva el resto de parámetros (utm, fbclid...)
+// y el hash. color null o 'blanco' (el de por defecto) no se escribe.
+function construirUrlVisor(pathname, search, hash, tipo, color) {
+  const q = new URLSearchParams(search || '');
+  q.set('tipo', tipo);
+  if (color && color !== 'blanco') q.set('color', color); else q.delete('color');
+  const texto = q.toString();
+  return (pathname || '/') + (texto ? '?' + texto : '') + (hash || '');
 }
 
 // Color promedio de la luz del objeto en las fotos de plantilla (crema). El blanco divide por él y escala a su rgb
@@ -310,6 +427,8 @@ if (typeof module !== 'undefined' && module.exports) {
     clampZoom, mugColumnScale, dilateMask, findKeyringAnchor, aplicarAlfa,
     COLORES_PRODUCTO, COLORES_POR_TIPO, colorValido, colorPorDefecto, colorDeUrl, tintarPixeles,
     coloresDisponibles, colorPorDefectoDisponible, validarColoresConfig, parsearConfigVisorRest,
+    resultadoConfigRest, configEnCache, cargarConfigVisor, construirUrlVisor, CLAVE_CONFIG, CONFIG_VIGENCIA_MS, CONFIG_TIMEOUT_MS,
+    PRECIO_MIN, PRECIO_MAX, TIPOS_PRECIO, PRECIOS_POR_DEFECTO, precioValido, precioCOP, validarPrecios, preciosDeConfig, MEDIDA_CORTA,
     mensajeSolicitudPersonalizada, urlWhatsAppSolicitud, nombreArchivo, cajaOpaca, limitarResolucion
   };
 }

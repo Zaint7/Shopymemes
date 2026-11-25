@@ -8,7 +8,7 @@
   <link rel="icon" type="image/png" href="/favicon.ico">
   <script src="shared.js?v=12"></script>
   <script src="pedidos-config.js?v=1"></script>
-  <script src="visor-core.js?v=7"></script>
+  <script src="visor-core.js?v=4"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
@@ -745,10 +745,22 @@
 
   <div id="visorAdminView" style="display:none;">
     <div class="admin-toolbar" style="padding-top:0;">
-      <h2>Visor de personalización <span class="count">(colores disponibles para tus clientes)</span></h2>
+      <h2>Visor de personalización <span class="count">(colores y precios para tus clientes)</span></h2>
     </div>
     <p class="metric-note" style="max-width:1100px;margin:0 auto;padding:0 24px;">Marca los colores que sí tienes en inventario. Los clientes solo verán esos colores en «Personaliza tu producto». Se necesita al menos uno por producto. Los cambios pueden tardar hasta 10 minutos en verse (el visor guarda la lista en el navegador).</p>
     <div class="vc-grid" id="visorColoresGrid"></div>
+    <div class="vc-grid" id="visorPreciosGrid">
+      <fieldset class="vc-card">
+        <legend>Precio de los productos personalizados (COP)</legend>
+        <p class="metric-note" style="margin:0 0 8px;">Es lo que paga el cliente por cada llavero, taza o cojín personalizado. Entre $1.000 y $500.000, sin puntos ni comas.</p>
+        <label class="vc-opcion" for="visorPrecioLlavero"><span>Llavero</span>
+          <input type="text" inputmode="numeric" autocomplete="off" id="visorPrecioLlavero" data-precio="llavero" min="1000" max="500000" step="500" maxlength="6" aria-describedby="visorColoresEstado" style="width:9rem;"></label>
+        <label class="vc-opcion" for="visorPrecioTaza"><span>Taza</span>
+          <input type="text" inputmode="numeric" autocomplete="off" id="visorPrecioTaza" data-precio="taza" min="1000" max="500000" step="500" maxlength="6" aria-describedby="visorColoresEstado" style="width:9rem;"></label>
+        <label class="vc-opcion" for="visorPrecioCojin"><span>Cojín</span>
+          <input type="text" inputmode="numeric" autocomplete="off" id="visorPrecioCojin" data-precio="cojin" min="1000" max="500000" step="500" maxlength="6" aria-describedby="visorColoresEstado" style="width:9rem;"></label>
+      </fieldset>
+    </div>
     <div class="vc-acciones">
       <button type="button" class="btn btn-dark" id="visorColoresGuardar">Guardar</button>
       <p class="vc-estado" id="visorColoresEstado" role="status" aria-live="polite"></p>
@@ -1361,6 +1373,7 @@
   const visorColoresGrid = document.getElementById('visorColoresGrid');
   const visorColoresEstado = document.getElementById('visorColoresEstado');
   const visorColoresGuardar = document.getElementById('visorColoresGuardar');
+  const visorPreciosGrid = document.getElementById('visorPreciosGrid');
   let configVisorCargada = false;
 
   function mensajeVisor(texto, clase) {
@@ -1381,6 +1394,22 @@
     }).join('');
   }
 
+  // Precios: los guardados si son válidos, si no los de por defecto (preciosDeConfig tolera documentos sin `precios`)
+  function dibujarPreciosVisor(config) {
+    const precios = preciosDeConfig(config);
+    visorPreciosGrid.querySelectorAll('input[data-precio]').forEach(i => { i.value = String(precios[i.dataset.precio]); });
+  }
+
+  // Lee los tres campos como enteros ('40000' o '40.000'); lo que no es un entero se deja como NaN para que valide
+  function preciosEscritos() {
+    const r = {};
+    visorPreciosGrid.querySelectorAll('input[data-precio]').forEach(i => {
+      const t = i.value.trim().replace(/[.\s]/g, '');
+      r[i.dataset.precio] = /^\d{1,7}$/.test(t) ? Number(t) : NaN;
+    });
+    return r;
+  }
+
   async function cargarConfigVisorAdmin() {
     if (configVisorCargada) return;   // no más lecturas al volver a la pestaña
     configVisorCargada = true;
@@ -1388,10 +1417,12 @@
     try {
       const snap = await getDoc(doc(db, 'config', 'visor'));
       dibujarColoresVisor(snap.exists() ? snap.data() : null);
-      mensajeVisor(snap.exists() ? '' : 'Aún no has guardado una lista: todos los colores están disponibles.');
+      dibujarPreciosVisor(snap.exists() ? snap.data() : null);
+      mensajeVisor(snap.exists() ? '' : 'Aún no has guardado una lista: todos los colores están disponibles y los precios son los de por defecto ($40.000).');
     } catch (e) {
       configVisorCargada = false;
       dibujarColoresVisor(null);
+      dibujarPreciosVisor(null);
       mensajeVisor('No se pudo leer la configuración. Puedes guardar de todos modos; se reemplaza la anterior.', 'is-error');
     }
   }
@@ -1408,11 +1439,14 @@
     const colores = coloresMarcados();
     const v = validarColoresConfig(colores);
     if (!v.ok) { mensajeVisor(v.error, 'is-error'); return; }
+    const precios = preciosEscritos();
+    const vp = validarPrecios(precios);
+    if (!vp.ok) { mensajeVisor(vp.error, 'is-error'); return; }
     visorColoresGuardar.disabled = true;
     mensajeVisor('Guardando…');
     try {
-      await setDoc(doc(db, 'config', 'visor'), { colores, actualizado: serverTimestamp() });   // sin merge: reemplaza todo
-      mensajeVisor('Guardado. Los clientes verán estos colores (hasta 10 minutos en actualizarse).', 'is-ok');
+      await setDoc(doc(db, 'config', 'visor'), { colores, precios, actualizado: serverTimestamp() });   // sin merge: reemplaza todo; colores y precios van en el MISMO guardado
+      mensajeVisor('Guardado. Los clientes verán estos colores y precios (hasta 10 minutos en actualizarse).', 'is-ok');
     } catch (e) {
       mensajeVisor('No se pudo guardar. Revisa tu sesión y que las reglas de Firestore estén publicadas.', 'is-error');
     } finally {

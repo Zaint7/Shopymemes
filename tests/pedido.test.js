@@ -195,3 +195,75 @@ test('esperaRestanteMs: limita a 1 envío cada 20 s', () => {
   assert.equal(esperaRestanteMs(80000, 100000), 0);
   assert.equal(esperaRestanteMs(200000, 100000), 0, 'reloj movido hacia atrás no bloquea');
 });
+
+// ---------- Pedidos con productos personalizados ----------
+const { itemsDeCarrito, planearEnvioDisenos, textoEnvioDisenos } = require('../Public/pedido.js');
+
+const lineasMixtas = () => [
+  { product: { id: 3, name: 'Llavero Meme', price: 12000 }, qty: 2 },
+  { product: { id: 'pers-abc1234567', name: 'Personalizado: Taza · Rojo', price: 40000, medida: 'pocillo estándar' }, qty: 1, personalizado: true },
+  { product: { id: 'pers-abc1234568', name: 'Personalizado: Cojín · Blanco', price: 50000, medida: '30 cm x 30 cm' }, qty: 2, personalizado: true }
+];
+
+test('itemsDeCarrito: las personalizadas llevan 🎨, la medida y "(diseño por WhatsApp)"; las normales no cambian', () => {
+  const it = itemsDeCarrito(lineasMixtas());
+  assert.deepEqual(it[0], { nombre: 'Llavero Meme', cantidad: 2, precioUnitario: 12000 });
+  assert.equal(it[1].nombre, '🎨 Personalizado: Taza · Rojo (pocillo estándar) (diseño por WhatsApp)');
+  assert.equal(it[1].personalizado, true);
+  assert.equal(it[2].nombre, '🎨 Personalizado: Cojín · Blanco (30 cm x 30 cm) (diseño por WhatsApp)');
+  const sinMedida = itemsDeCarrito([{ product: { name: 'Personalizado: Llavero', price: 40000 }, qty: 1, personalizado: true }]);
+  assert.equal(sinMedida[0].nombre, '🎨 Personalizado: Llavero (diseño por WhatsApp)');
+});
+
+test('crearPedido y el mensaje de WhatsApp con carrito mixto: total correcto y "Te envío mis diseños por este chat."', () => {
+  const p = crearPedido(clienteOk(), itemsDeCarrito(lineasMixtas()), ahora, () => 0);
+  assert.equal(p.total, 2 * 12000 + 40000 + 2 * 50000);
+  assert.equal(p.items[1].personalizado, true);
+  assert.ok(!('personalizado' in p.items[0]));
+  const m = mensajeWhatsApp(p);
+  assert.ok(m.includes('• 1 x 🎨 Personalizado: Taza · Rojo (pocillo estándar) (diseño por WhatsApp) - $40.000'));
+  assert.ok(m.includes('• 2 x 🎨 Personalizado: Cojín · Blanco (30 cm x 30 cm) (diseño por WhatsApp) - $100.000'));
+  assert.ok(m.includes('Te envío mis diseños por este chat.'));
+  assert.ok(m.indexOf('Te envío mis diseños') < m.indexOf('Quedo atento(a)'));
+  assert.ok(m.length <= MAX_MENSAJE);
+});
+
+test('mensaje: un solo diseño dice "mi diseño"; sin personalizadas no cambia nada (ni la frase)', () => {
+  const uno = crearPedido(clienteOk(), itemsDeCarrito([lineasMixtas()[1]]), ahora, () => 0);
+  assert.ok(mensajeWhatsApp(uno).includes('Te envío mi diseño por este chat.'));
+  const normal = crearPedido(clienteOk(), items, ahora, () => 0);
+  assert.ok(!/diseño|🎨/.test(mensajeWhatsApp(normal)));
+  assert.equal(normal.items.some(i => 'personalizado' in i), false);
+});
+
+test('mensaje largo: con muchas líneas se recorta la lista pero la frase de los diseños se conserva', () => {
+  const muchas = [];
+  for (let i = 0; i < 40; i++) muchas.push({ product: { name: 'Producto con un nombre bastante largo número ' + i, price: 1000 }, qty: 1 });
+  muchas.push(lineasMixtas()[1]);
+  const m = mensajeWhatsApp(crearPedido(clienteOk(), itemsDeCarrito(muchas), ahora, () => 0));
+  assert.ok(m.length <= MAX_MENSAJE);
+  assert.ok(m.includes('Te envío mi diseño por este chat.'));
+});
+
+test('planearEnvioDisenos: todo junto si el sistema lo acepta; si no, por línea; si no, archivo por archivo; si no, descargar', () => {
+  const f = (n) => ({ name: n });
+  const lineas = [{ id: 'a', files: [f('a1'), f('a2')] }, { id: 'b', files: [f('b1'), f('b2')] }, { id: 'c', files: [] }];
+  const todo = planearEnvioDisenos(lineas, () => true);
+  assert.equal(todo.modo, 'compartir');
+  assert.equal(todo.lotes.length, 1);
+  assert.deepEqual(todo.lotes[0].ids, ['a', 'b']);
+  assert.equal(todo.lotes[0].files.length, 4);
+  const porLinea = planearEnvioDisenos(lineas, (fs) => fs.length <= 2);
+  assert.deepEqual(porLinea.lotes.map(l => l.ids), [['a'], ['b']]);
+  const sueltos = planearEnvioDisenos(lineas, (fs) => fs.length === 1);
+  assert.equal(sueltos.lotes.length, 4);
+  assert.equal(planearEnvioDisenos(lineas, () => false).modo, 'descargar');
+  assert.equal(planearEnvioDisenos(lineas, () => { throw new Error('x'); }).modo, 'descargar');
+  assert.equal(planearEnvioDisenos([{ id: 'c', files: [] }], () => true).modo, 'descargar', 'sin archivos no hay qué compartir');
+  assert.equal(planearEnvioDisenos(null, () => true).modo, 'descargar');
+});
+
+test('textoEnvioDisenos: pedido y nombres de los diseños, en singular o plural', () => {
+  assert.equal(textoEnvioDisenos('SM-261122-AB3K', ['Personalizado: Taza · Rojo']), 'Pedido SM-261122-AB3K: te envío mi diseño. Personalizado: Taza · Rojo');
+  assert.match(textoEnvioDisenos('SM-261122-AB3K', ['A', 'B']), /te envío mis diseños\. A; B$/);
+});

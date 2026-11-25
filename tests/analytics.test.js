@@ -110,11 +110,11 @@ test('si localStorage falla no se rompe: pregunta y, al aceptar, carga igual', (
 });
 
 test('las páginas públicas cargan analytics-config.js y analytics.js (defer); el admin no', () => {
-  for (const page of ['index.html', 'ofertas.html', 'product.html', 'categorias.html', 'carrito.html', 'personalizar.html', '404.html']) {
+  for (const page of ['index.html', 'ofertas.html', 'product.html', 'categorias.html', 'carrito.html', '404.html']) {
     const html = read(page);
     const base = page === '404.html' ? '/' : '';
     assert.ok(html.includes(`<script src="${base}analytics-config.js?v=2"></script>`), `${page}: falta analytics-config.js`);
-    assert.ok(html.includes(`<script src="${base}analytics.js?v=1" defer></script>`), `${page}: falta analytics.js`);
+    assert.ok(html.includes(`<script src="${base}analytics.js?v=2" defer></script>`), `${page}: falta analytics.js`);
     assert.ok(html.indexOf('analytics-config.js') < html.indexOf('analytics.js?'), `${page}: la configuración va primero`);
   }
   assert.ok(!/analytics/.test(read('admin.html').replace('analytics.google.com', '')), 'el admin no carga analítica');

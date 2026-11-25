@@ -1,6 +1,5 @@
 // =============================================
-// FOTO-ARCHIVO: lectura segura de la foto que sube el cliente (la usan personalizar.js y
-// seccion-personaliza.js). Valida tamaño y tipo, decodifica con varios respaldos y devuelve un
+// FOTO-ARCHIVO: lectura segura de la foto que sube el cliente (la usa visor-app.js). Valida tamaño y tipo, decodifica con varios respaldos y devuelve un
 // canvas reducido. La foto nunca sale del navegador.
 // Requiere visor-core.js antes (esImagenSoportada, downscaleSize).
 // Errores: Error('NO_SOPORTADO' | 'MUY_GRANDE' | 'NO_LEE'); MENSAJES_FOTO tiene el texto para cada uno.

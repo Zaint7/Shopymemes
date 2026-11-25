@@ -14,10 +14,11 @@ La meta del proyecto es que todo funcione **gratis** (planes gratuitos de Fireba
 - **Catálogo** con inicio, categorías, ofertas, buscador y página de producto. Los llaveros (4 cm x 4 cm), cojines (30 cm x 30 cm) y mugs (tamaño estándar de pocillo) muestran su tamaño en tarjetas, página de producto, visor y mensaje de WhatsApp.
 - **Carrito** con animaciones y **formulario de pedido** (nombre, celular, ciudad, dirección, referencias, aviso de conjunto cerrado y aceptación de la Ley 1581 de protección de datos).
 - **Confirmación** "Pedido #SM-… recibido" y mensaje ordenado a WhatsApp.
-- **Visor de personalización 2D:** el cliente sube su foto y ve cómo queda en una **taza**, un **cojín** o un **llavero acrílico**, antes de pedir.
+- **Visor de personalización 2D, directamente en el inicio** (sin cambiar de página; Llavero/Taza/Cojín en pestañas): el cliente sube su foto y ve cómo queda en una **taza**, un **cojín** o un **llavero acrílico**, antes de pedir.
   - Recorte automático del sujeto de la foto (modelo MODNet en el navegador; la foto **no sale del dispositivo**).
   - Selector de color del producto (taza: blanco, beige, hueso, negro, rojo; cojín: blanco, beige, hueso, café, negro).
-  - Botón **"Solicitar pedido personalizado"**: abre WhatsApp con el producto y color elegidos (en celular comparte el diseño como imagen).
+  - **Añadir al carrito** el producto personalizado (precio por tipo, editable desde el admin; por defecto $40.000) y seguir comprando: un solo pedido puede llevar productos personalizados y normales. Hasta 5 diseños distintos por pedido. Al confirmar, el paso **"Enviar mis diseños"** comparte los archivos por WhatsApp (menú de compartir del celular; si no existe, se descargan para adjuntarlos). La foto nunca se sube a ningún servidor.
+  - Botón secundario **"Consultar por WhatsApp"**: abre WhatsApp con el producto y color elegidos (en celular comparte el diseño como imagen).
   - **Descarga de 2 archivos:** el diseño con el producto y la foto del cliente recortada, como referencia para producir.
 - Imágenes livianas (Cloudinary optimizado según la pantalla) y animaciones suaves (con respeto a "reducir movimiento").
 
@@ -28,7 +29,7 @@ La meta del proyecto es que todo funcione **gratis** (planes gratuitos de Fireba
   - **Estimador de consumo** del plan gratuito (Firestore, Cloudinary, correos) con semáforo.
   - **Pedidos y ventas** leídos de la hoja de Google (totales, gráfica de 30 días, ciudades, estados, últimos pedidos), protegidos con una clave.
   - Enlaces rápidos a Firebase, Cloudinary, Drive, Search Console y Analytics.
-- **Pestaña Visor:** activar o desactivar los colores disponibles de taza y cojín según el inventario.
+- **Pestaña Visor:** activar o desactivar los colores disponibles de taza y cojín según el inventario y fijar el **precio** de los productos personalizados (llavero, taza, cojín).
 
 ### Pedidos y respaldo
 - Cada pedido se guarda en una **hoja de Google** ("Pedidos Shopymemes") mediante un script de Google Apps Script, con aviso por correo y **copia diaria automática** en Drive.
@@ -62,7 +63,8 @@ El catálogo se publica como una "foto" estática (`catalog.json`) para que la t
 ```
 Public/                 Sitio web (lo que se publica)
   index.html, ofertas.html, categorias.html, product.html, carrito.html, 404.html
-  personalizar.html     Visor de personalización (?tipo=taza|cojin|llavero&color=...)
+  diseno-store.js       Guarda en el navegador (IndexedDB) los archivos de cada diseño del carrito
+  visor-app.js / visor-loader.js  Visor de personalización en el inicio (index.html?tipo=taza|cojin|llavero&color=...#personaliza)
   admin.html            Panel de administración
   shared.js, products.js, cart.js, layout.js, pedido.js ...   Lógica de la tienda
   visor.js, visor-core.js, recorte*.js, foto-archivo.js       Visor y recorte de fotos

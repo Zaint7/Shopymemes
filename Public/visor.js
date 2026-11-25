@@ -1202,6 +1202,21 @@
           canvas.toBlob(b => (b ? resolve(b) : reject(new Error('No se pudo exportar el PNG'))), 'image/png');
         });
       },
+      // Zoom, giro y desplazamiento de la foto respecto al centro de su zona: sirven para conservar el encuadre
+      // al cambiar de producto (la zona de cada producto es distinta, por eso el zoom es relativo)
+      getVista() {
+        return { zoom: zoomRelativo, rot: estado.foto.rot, dx: estado.foto.cx - (area.x + area.w / 2), dy: estado.foto.cy - (area.y + area.h / 2) };
+      },
+      setVista(v) {
+        if (!v || !estado.fuente) return;
+        zoomRelativo = clampZoom(Number(v.zoom) > 0 ? Number(v.zoom) : 1);
+        estado.foto.scale = escalaInicial * zoomRelativo;
+        estado.foto.rot = Number.isFinite(Number(v.rot)) ? Number(v.rot) : 0;
+        const tope = (n, max) => Math.max(-max, Math.min(max, Number.isFinite(Number(n)) ? Number(n) : 0));
+        estado.foto.cx = area.x + area.w / 2 + tope(v.dx, area.w / 2);
+        estado.foto.cy = area.y + area.h / 2 + tope(v.dy, area.h / 2);
+        visor.render();
+      },
       // 'completa' | 'recorte': el modo de la foto que se está mostrando
       getModo() { return estado.modo; },
       // PNG del ARTE solo (sin producto, fondo, zoom, giro ni posición): el recorte con alfa o la foto tal como se subió,

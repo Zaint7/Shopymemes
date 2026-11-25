@@ -11,13 +11,15 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <script src="shared.js?v=12"></script>
   <script src="products.js?v=4"></script>
-  <script src="cart.js"></script>
+  <script src="cart.js?v=3"></script>
   <script src="layout.js"></script>
+  <script src="diseno-store.js?v=1"></script>
   <script src="pedidos-config.js?v=1"></script>
-  <script src="pedido.js?v=1"></script>
-  <link rel="stylesheet" href="style.css?v=11">
+  <script src="pedido.js?v=2"></script>
+  <script src="visor-core.js?v=4"></script>
+  <link rel="stylesheet" href="style.css?v=13">
   <script src="analytics-config.js?v=2"></script>
-  <script src="analytics.js?v=1" defer></script>
+  <script src="analytics.js?v=2" defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
@@ -151,6 +153,13 @@
   #checkoutModal #checkoutSubmit, #checkoutModal #doneWhatsapp { background: var(--co-green); border-color: var(--co-green); color: #fff; box-shadow: 0 4px 12px rgba(25, 135, 84, .35); }
   #checkoutModal #checkoutSubmit:hover, #checkoutModal #doneWhatsapp:hover { background: var(--co-green-dark); border-color: var(--co-green-dark); }
   #checkoutModal #checkoutSubmit { flex: 1 1 auto; }
+  #checkoutModal #doneEnviarDisenos { background: var(--co-green); border-color: var(--co-green); color: #fff; box-shadow: 0 4px 12px rgba(25, 135, 84, .35); width: 100%; white-space: normal; }
+  #checkoutModal #doneEnviarDisenos:disabled { opacity: .6; }
+  #checkoutModal .co-disenos { border: 2px solid var(--co-green); background: #F0FBF4; border-radius: 14px; padding: .9rem; margin: .9rem 0; text-align: left; }
+  #checkoutModal .co-disenos-titulo { font-size: 1.1rem; font-weight: 800; margin: 0 0 .4rem; }
+  #checkoutModal .co-disenos-lista { list-style: none; padding: 0; margin: 0 0 .7rem; font-size: .9rem; }
+  #checkoutModal .co-disenos-lista li { padding: .15rem 0; }
+  #checkoutModal .co-disenos-lista .is-enviado { color: #146c43; font-weight: 600; }
   #checkoutModal #checkoutSubmit:disabled { opacity: .75; }
   #checkoutModal .btn-outline-dark { color: #212529; border: 1.5px solid #212529; background: #fff; }
   #checkoutModal .btn-outline-dark:hover { background: #212529; color: #fff; }
@@ -184,6 +193,7 @@
         </div>
         <div class="modal-body">
           <div class="co-summary"><strong id="checkoutResumen"></strong></div>
+          <p class="small mb-2 d-none" id="checkoutPersNota">Tu pedido incluye productos personalizados: al terminar te pediremos enviar tu diseño por WhatsApp (tu foto no se sube a ningún servidor).</p>
           <p class="co-sub">Solo necesitamos estos datos para enviarlo.</p>
           <div id="checkoutErrores" class="alert alert-danger py-2 small d-none" role="alert" aria-live="assertive"></div>
 
@@ -265,6 +275,14 @@
           <div class="co-badge" aria-hidden="true"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
           <h2 class="checkout-id" id="doneTitle" tabindex="-1"></h2>
           <div><span class="co-idpill" id="doneIdPill"></span></div>
+          <section class="co-disenos d-none" id="doneDisenos" aria-labelledby="doneDisenosTitulo">
+            <h3 class="co-disenos-titulo" id="doneDisenosTitulo">Falta un paso: envía tu diseño por WhatsApp</h3>
+            <p class="small mb-2" id="doneDisenosTexto">Tu pedido ya quedó registrado. Tu foto no se sube a ningún servidor: para producir tu diseño necesitamos que nos lo envíes por el chat.</p>
+            <ul class="co-disenos-lista" id="doneDisenosLista"></ul>
+            <button type="button" class="btn rounded-pill" id="doneEnviarDisenos" disabled>Enviar mis diseños</button>
+            <p class="small mb-0 mt-2" id="doneDisenosNota" tabindex="-1" role="status" aria-live="polite"></p>
+            <button type="button" class="btn btn-outline-dark btn-sm rounded-pill mt-2 d-none" id="doneDisenosListo">Listo, ya los envié</button>
+          </section>
           <div id="doneModoPrueba" class="alert alert-warning py-2 small d-none" role="status">Modo prueba: el pedido no se guardó en la hoja</div>
           <ul class="checkout-recap" id="doneItems"></ul>
           <p class="co-total"><span>Total</span><span id="doneTotal"></span></p>
@@ -309,9 +327,30 @@
     }
 
     // Une cada línea guardada ({id, qty}) con su producto de products.js
+    // ----- Precio de lo personalizado: siempre sale de la config del admin (config/visor.precios), nunca de lo guardado -----
+    // Se revisa al cargar y al abrir el pedido. Si la config no se puede leer (red, tiempo, respuesta rara) se conserva
+    // el precio guardado y el carrito nunca se bloquea. Un documento inexistente = precios por defecto.
+    function aplicarPrecios(precios) {
+      const { cart, cambios } = repreciarPersonalizadas(getCart(), precios);
+      if (!cambios.length || !saveCart(cart)) return false;
+      const distintos = [...new Set(cambios.map(c => c.despues))];
+      showNotice(distintos.length === 1 && cambios.length === 1
+        ? `El precio de tu personalizado se actualizó a ${formatPrice(distintos[0])}.`
+        : 'Los precios de tus productos personalizados se actualizaron: revisa el total.');
+      return true;
+    }
+    async function repreciar() {
+      if (!getCart().some(esLineaPersonalizada)) return false;
+      const r = await cargarConfigVisor();
+      return r.estado === 'error' ? false : aplicarPrecios(preciosDeConfig(r.config));
+    }
+
+    // Las líneas personalizadas (id 'pers-…') traen sus propios datos: no están en el catálogo ni tienen stock que revisar
     function getCartLines() {
       return getCart()
-        .map(item => ({ product: products.find(p => p.id === item.id), qty: item.qty }))
+        .map(item => esLineaPersonalizada(item)
+          ? { product: item, qty: item.qty, personalizado: true }
+          : { product: products.find(p => p.id === item.id), qty: item.qty })
         .filter(line => line.product); // ignora productos que ya no existan
     }
 
@@ -330,7 +369,42 @@
     }
 
     // Una línea del Módulo 1: foto, nombre + precio unitario, cantidad, subtotal y "Quitar"
-    function lineHtml({ product: p, qty }) {
+    // Línea personalizada: miniatura del diseño, detalle y cantidad; sin enlace a producto
+    function lineHtmlPers({ product: p, qty }) {
+      const name = escapeHtml(p.name);
+      const atMax = qty >= PERS_MAX_QTY;
+      const detalle = [p.medida, 'Con tu foto'].filter(Boolean).map(escapeHtml).join(' · ');
+      const foto = p.thumb
+        ? `<img src="${escapeHtml(p.thumb)}" alt="" width="80" height="80" decoding="async">`
+        : '<span class="cart-line-sin-foto" aria-hidden="true">🎨</span>';
+      return `
+        <li class="cart-line cart-line-pers" data-id="${escapeHtml(p.id)}">
+          <span class="cart-line-photo" aria-hidden="true">${foto}</span>
+          <div class="cart-line-info">
+            <p class="cart-line-name">${name}</p>
+            <p class="cart-line-unit">${formatPrice(p.price)} c/u · ${detalle}${atMax ? ' · <span class="text-danger">Máximo por diseño</span>' : ''}</p>
+            <div class="qty-pill" role="group" aria-label="Cantidad de ${name}">
+              <button type="button" class="qty-pill-btn" data-action="dec" aria-label="Quitar uno">−</button>
+              <span class="qty-pill-value" aria-live="polite">${qty}</span>
+              <button type="button" class="qty-pill-btn" data-action="inc" aria-label="Agregar uno" ${atMax ? 'disabled' : ''}>+</button>
+            </div>
+          </div>
+          <div class="cart-line-side">
+            <p class="cart-line-subtotal">${formatPrice(p.price * qty)}</p>
+            <button type="button" class="cart-line-remove" data-action="remove" aria-label="Quitar ${name} del carrito">
+              <svg aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              Quitar
+            </button>
+          </div>
+        </li>`;
+    }
+
+    function lineHtml(linea) {
+      if (linea.personalizado) return lineHtmlPers(linea);
+      const { product: p, qty } = linea;
       const name = escapeHtml(p.name);
       const atMax = qty >= maxQtyFor(p);
       return `
@@ -419,12 +493,14 @@
     cartItemsEl.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
-      const id = parseInt(btn.closest('[data-id]').dataset.id);
+      const id = parseCartId(btn.closest('[data-id]').dataset.id);
       const action = btn.dataset.action;
 
       if (action === 'inc' && !changeQty(id, 1)) showCartToast('No hay más unidades disponibles');
       if (action === 'dec') changeQty(id, -1);
       if (action === 'remove') removeFromCart(id);
+      // si la línea personalizada ya no está (quitada o con cantidad 0), sus archivos se borran de este dispositivo
+      if (typeof id === 'string' && !getCart().some(i => i.id === id) && window.DisenoStore) window.DisenoStore.borrar(id);
       renderCart();
 
       const sameBtn = cartItemsEl.querySelector(`[data-id="${id}"] [data-action="${action}"]:not(:disabled)`);
@@ -433,6 +509,7 @@
 
     document.getElementById('clearCartBtn').addEventListener('click', () => {
       if (confirm('¿Vaciar el carrito?')) {
+        if (window.DisenoStore) getCart().filter(esLineaPersonalizada).forEach(l => window.DisenoStore.borrar(l.id));
         clearCart();
         showNotice('');
         renderCart();
@@ -521,8 +598,9 @@
       errorsEl.classList.remove('d-none');
     }
 
-    function abrirCheckout(e) {
+    async function abrirCheckout(e) {
       abridor = e && e.currentTarget ? e.currentTarget : null;
+      if (await repreciar()) { renderCart(); return; }   // si cambió algún precio, se avisa y se revisa el total antes de pedir
       const adjusted = syncCartWithStock();
       if (adjusted.length > 0) {
         showNotice(`Ajustamos la cantidad de ${adjusted.join(', ')} según el stock disponible. Revisa tu pedido antes de enviarlo.`);
@@ -534,6 +612,7 @@
       const count = lines.reduce((s, l) => s + l.qty, 0);
       document.getElementById('checkoutResumen').textContent =
         `${count === 1 ? '1 producto' : count + ' productos'} · Total ${formatPrice(getTotal(lines))}`;
+      document.getElementById('checkoutPersNota').classList.toggle('d-none', !lines.some(l => l.personalizado));
       formEl.classList.remove('d-none');
       doneEl.classList.add('d-none');
       mostrarErrores({});
@@ -565,7 +644,7 @@
     }
 
     // Vista "Pedido recibido". Todo texto del cliente entra con textContent (nunca como HTML).
-    function mostrarConfirmacion(pedido, urlWhatsapp, guardado) {
+    function mostrarConfirmacion(pedido, urlWhatsapp, guardado, lineasPers = []) {
       document.getElementById('doneTitle').textContent = `Pedido #${pedido.id} recibido`;
       document.getElementById('doneIdPill').textContent = pedido.id;
       const lista = document.getElementById('doneItems');
@@ -589,7 +668,108 @@
       doneEl.classList.remove('d-none');
       document.getElementById('doneTitle').focus();
       doneEl.querySelector('.modal-body').scrollTop = 0;
+      prepararDisenos(pedido, lineasPers);
     }
+
+    // ----- Falta un paso: enviar los diseños por WhatsApp (solo si el pedido tiene productos personalizados) -----
+    // Los archivos están en IndexedDB (diseno-store.js). "Enviar mis diseños" usa el menú de compartir del sistema
+    // (Web Share con archivos); si no se puede, se descargan para adjuntarlos en el chat. Nada se sube a ningún servidor.
+    const disenosSec = document.getElementById('doneDisenos');
+    const disenosLista = document.getElementById('doneDisenosLista');
+    const disenosNota = document.getElementById('doneDisenosNota');
+    const disenosEnviar = document.getElementById('doneEnviarDisenos');
+    const disenosListo = document.getElementById('doneDisenosListo');
+    let disenos = [];        // [{ id, nombre, files: [File], estado: 'pendiente' | 'enviado' | 'sin-archivo' }]
+    let disenosPedidoId = '';
+
+    function pintarDisenos() {
+      disenosLista.replaceChildren(...disenos.map(d => {
+        const li = document.createElement('li');
+        li.textContent = `${d.nombre} — ` + (d.estado === 'enviado' ? 'enviado' : d.estado === 'descargado' ? 'descargado: adjúntalo en el chat' : d.estado === 'sin-archivo' ? 'sin archivo en este dispositivo: envía la foto por el chat' : 'pendiente');
+        if (d.estado === 'enviado' || d.estado === 'descargado') li.className = 'is-enviado';
+        return li;
+      }));
+      const pendientes = disenos.filter(d => d.estado === 'pendiente');
+      disenosEnviar.classList.toggle('d-none', pendientes.length === 0);
+      disenosEnviar.disabled = false;
+      disenosEnviar.textContent = pendientes.length < disenos.filter(d => d.estado !== 'sin-archivo').length ? `Enviar los que faltan (${pendientes.length})` : 'Enviar mis diseños';
+    }
+
+    async function prepararDisenos(pedido, lineasPers) {
+      disenos = [];
+      disenosPedidoId = pedido.id;
+      disenosSec.classList.toggle('d-none', lineasPers.length === 0);
+      disenosListo.classList.add('d-none');
+      disenosNota.textContent = '';
+      if (lineasPers.length === 0) return;
+      disenosEnviar.disabled = true;
+      const preparando = document.createElement('li');
+      preparando.textContent = 'Preparando tus archivos…';
+      disenosLista.replaceChildren(preparando);
+      for (const [i, l] of lineasPers.entries()) {
+        let reg = null;
+        try { reg = window.DisenoStore ? await window.DisenoStore.leer(l.id) : null; } catch (e) { /* sin archivos */ }
+        const files = [];
+        if (reg && reg.diseno) files.push(new File([reg.diseno], `shopymemes-${pedido.id}-${i + 1}-diseno.png`, { type: 'image/png' }));
+        if (reg && reg.arte) files.push(new File([reg.arte], `shopymemes-${pedido.id}-${i + 1}-arte.png`, { type: 'image/png' }));
+        disenos.push({ id: l.id, nombre: l.name, files, estado: files.length ? 'pendiente' : 'sin-archivo' });
+      }
+      pintarDisenos();
+      if (!disenos.some(d => d.estado === 'pendiente')) {
+        disenosNota.textContent = 'No encontramos los archivos de tu diseño en este dispositivo. Envía tu foto por el chat de WhatsApp (botón "Abrir WhatsApp para confirmar").';
+      }
+    }
+
+    function descargarDisenos(lista) {
+      lista.flatMap(d => d.files).forEach((f, i) => setTimeout(() => {
+        const url = URL.createObjectURL(f);
+        const a = document.createElement('a');
+        a.href = url; a.download = f.name;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+      }, i * 400));
+    }
+
+    disenosEnviar.addEventListener('click', async () => {
+      const pendientes = disenos.filter(d => d.estado === 'pendiente');
+      if (pendientes.length === 0) return;
+      const puede = (files) => !!(navigator.share && navigator.canShare && navigator.canShare({ files }));
+      const plan = planearEnvioDisenos(pendientes, puede);   // sin esperas antes de share(): sigue siendo "un clic"
+      let enviados = pendientes;
+      if (plan.modo === 'compartir') {
+        const lote = plan.lotes[0];
+        enviados = pendientes.filter(d => lote.ids.includes(d.id));
+        try {
+          await navigator.share({ files: lote.files, text: textoEnvioDisenos(disenosPedidoId, enviados.map(d => d.nombre)) });
+        } catch (e) {
+          if (e && e.name === 'AbortError') return;   // cerró el menú de compartir: no es un error
+          descargarDisenos(enviados);
+          disenosNota.textContent = 'No pudimos abrir el menú de compartir. Se descargaron tus archivos: adjúntalos en el chat de WhatsApp.';
+          enviados.forEach(d => { d.estado = 'descargado'; });
+          pintarDisenos();
+          disenosListo.classList.remove('d-none');
+          return;
+        }
+        enviados.forEach(d => { d.estado = 'enviado'; });
+        const quedan = disenos.filter(d => d.estado === 'pendiente').length;
+        disenosNota.textContent = quedan ? `Falta${quedan === 1 ? '' : 'n'} ${quedan} diseño${quedan === 1 ? '' : 's'}: vuelve a tocar el botón para enviarlo${quedan === 1 ? '' : 's'}.` : 'Elige el chat de Shopymemes en WhatsApp y envía. Cuando lo hayas hecho, toca "Listo".';
+      } else {
+        descargarDisenos(pendientes);
+        pendientes.forEach(d => { d.estado = 'descargado'; });
+        disenosNota.textContent = 'Se descargaron tus archivos: adjúntalos en el chat de WhatsApp (botón "Abrir WhatsApp para confirmar") y envíalos.';
+      }
+      pintarDisenos();
+      disenosListo.classList.remove('d-none');
+    });
+
+    // Cuando la persona confirma, los archivos de este dispositivo ya no hacen falta
+    disenosListo.addEventListener('click', async () => {
+      for (const d of disenos) { try { if (window.DisenoStore) await window.DisenoStore.borrar(d.id); } catch (e) { /* no pasa nada */ } }
+      disenosListo.classList.add('d-none');
+      disenosEnviar.classList.add('d-none');
+      disenosNota.textContent = 'Listo. Borramos los archivos de este dispositivo. Te escribimos por WhatsApp para confirmar.';
+      disenosNota.focus();   // el botón desaparece: el foco pasa al mensaje
+    });
 
     formEl.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -598,8 +778,8 @@
       // Trampa para bots: se finge éxito sin enviar nada ni abrir WhatsApp
       if (formEl.elements.sitio_web.value.trim() !== '') {
         const lines = getCartLines();
-        const falso = crearPedido(leerForm(), lines.map(l => ({ nombre: l.product.name, cantidad: l.qty, precioUnitario: l.product.price })));
-        mostrarConfirmacion(falso, null, true);
+        const falso = crearPedido(leerForm(), itemsDeCarrito(lines));
+        mostrarConfirmacion(falso, null, true, []);
         return;
       }
 
@@ -619,10 +799,15 @@
         renderCart();
         return;
       }
+      // El envío no puede esperar a la red (WhatsApp se abre dentro del clic): se usan los precios que abrirCheckout
+      // acaba de dejar en caché; si cambiaron, se avisa y se revisa antes de enviar.
+      const enCache = configEnCache(localStorage, Date.now());
+      if (enCache && aplicarPrecios(preciosDeConfig(enCache.config))) { modal.hide(); renderCart(); return; }
       const lines = getCartLines();
       if (lines.length === 0) { modal.hide(); return renderCart(); }
 
-      const pedido = crearPedido(datos, lines.map(l => ({ nombre: l.product.name, cantidad: l.qty, precioUnitario: l.product.price })));
+      const pedido = crearPedido(datos, itemsDeCarrito(lines));
+      const lineasPers = lines.filter(l => l.personalizado).map(l => ({ id: l.product.id, name: l.product.name }));   // antes de vaciar el carrito
       const urlWhatsapp = `https://wa.me/${PEDIDOS_CONFIG.whatsapp}?text=${encodeURIComponent(mensajeWhatsApp(pedido))}`;
 
       // WhatsApp se abre YA, dentro del clic del usuario (si no, el bloqueador de ventanas lo frena).
@@ -646,7 +831,7 @@
       submitBtn.disabled = false;
       submitBtn.textContent = 'Confirmar pedido';
       document.getElementById('checkoutClose').disabled = false;
-      mostrarConfirmacion(pedido, urlWhatsapp, resultado.guardado);
+      mostrarConfirmacion(pedido, urlWhatsapp, resultado.guardado, lineasPers);
     });
 
     window.addEventListener('scroll', updateMobileBar, { passive: true });
@@ -657,7 +842,9 @@
     // Si el carrito cambia en otra pestaña, se redibuja aquí también
     window.addEventListener('storage', syncAndRender);
 
+    if (window.DisenoStore) window.DisenoStore.purgar(getCart().filter(esLineaPersonalizada).map(l => l.id));   // huérfanos de más de 3 días
     syncAndRender();
+    repreciar().then(cambio => { if (cambio) renderCart(); });
   });
 </script>
 </body>

@@ -29,7 +29,7 @@ El cliente sube una foto de su galería (la de su gato, por ejemplo) y ve cómo 
 - **Llavero acrílico:** la imagen del cliente se bordea con "acrílico" (borde translúcido tipo sticker alrededor de la figura) y lleva un ojal arriba. En modo recorte, el borde sigue el contorno del sujeto. En modo foto completa, el borde sigue un rectángulo de esquinas redondeadas.
 
 ## Flujo del cliente
-1. Entra a `personalizar.html?id=ID` desde un producto marcado como personalizable.
+1. Entra a la página del visor (diseño original; hoy es la sección del inicio) desde un producto marcado como personalizable.
 2. Toca **Subir foto**. La foto se reduce a unos 1024 px por lado antes de procesarla.
 3. Elige **Foto completa** o **Recortar sujeto**. En el segundo caso se descarga el modelo con barra de progreso; si falla o tarda demasiado, se ofrece foto completa.
 4. Ajusta (arrastrar, zoom, rotar) y ve el resultado sobre el producto en vivo.
@@ -45,7 +45,7 @@ El cliente sube una foto de su galería (la de su gato, por ejemplo) y ve cómo 
 - **Borde acrílico:** se calcula en canvas dilatando la máscara del recorte unos píxeles y rellenándola con blanco translúcido, brillo suave y sombra.
 - **Datos:** el producto gana dos campos opcionales, `personalizable` (booleano) y `tipoPersonalizacion` (`taza`, `cojin` o `llavero`). Las reglas de Firestore (`hasOnly` en `validProduct`) y `LIMITS` en `shared.js` se actualizan juntas, con su test. *(Mi llamada.)*
 - **Plantillas:** imágenes genéricas de taza, cojín y llavero en `Public/personalizar/`, cada una dentro del presupuesto de 300 KB que ya impone el test.
-- **Página aparte:** `personalizar.html` + `personalizar.js`, para no engordar `product.html`. *(Mi llamada.)* Sigue la regla de subir `?v=` en archivos compartidos.
+- **(Reemplazado: el visor ahora vive en el inicio, `visor-app.js` + `visor-loader.js`; `personalizar.html` se eliminó.) Página aparte:** una página y un script propios (ya eliminados), para no engordar `product.html`. *(Mi llamada.)* Sigue la regla de subir `?v=` en archivos compartidos.
 - **Accesibilidad y móvil:** pensado primero para celular, respeta `prefers-reduced-motion`.
 - **Pruebas:** funciones puras con TDD (ajuste y cobertura de la foto, reducción de tamaño, dilatación de la máscara). La parte visual se verifica con Playwright.
 

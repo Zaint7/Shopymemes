@@ -54,13 +54,32 @@ function calcularTipoPago(conjuntoCerrado) {
   return conjuntoCerrado ? 'Pago anticipado' : 'Contraentrega';
 }
 
-// items: [{nombre, cantidad, precioUnitario}] (ya revisados contra el stock por el carrito)
+// Líneas del carrito (carrito.html: [{ product, qty, personalizado? }]) -> items del pedido.
+// Una línea personalizada lleva su nombre completo ("🎨 Personalizado: Taza · Rojo (pocillo estándar) (diseño por WhatsApp)"):
+// así el cliente, el chat y la hoja (columna Productos) dicen lo mismo y Apps Script no necesita cambios.
+function itemsDeCarrito(lineas) {
+  return (lineas || []).map(l => {
+    const p = l.product || {};
+    if (l.personalizado) {
+      const medida = limpiarTexto(p.medida);
+      return {
+        nombre: `🎨 ${limpiarTexto(p.name)}${medida ? ` (${medida})` : ''} (diseño por WhatsApp)`,
+        cantidad: l.qty, precioUnitario: p.price, personalizado: true
+      };
+    }
+    return { nombre: p.name, cantidad: l.qty, precioUnitario: p.price };
+  });
+}
+
+// items: [{nombre, cantidad, precioUnitario, personalizado?}] (ya revisados contra el stock por el carrito)
 function crearPedido(cliente, items, ahora = new Date(), aleatorio = Math.random) {
   const c = cliente || {};
   const lineas = (items || []).map(i => {
     const cantidad = Number(i.cantidad);
     const precioUnitario = Number(i.precioUnitario);
-    return { nombre: limpiarTexto(i.nombre), cantidad, precioUnitario, subtotal: cantidad * precioUnitario };
+    const linea = { nombre: limpiarTexto(i.nombre), cantidad, precioUnitario, subtotal: cantidad * precioUnitario };
+    if (i.personalizado === true) linea.personalizado = true;
+    return linea;
   });
   const conjuntoCerrado = c.conjuntoCerrado === true;
   return {
@@ -107,7 +126,10 @@ function mensajeWhatsApp(pedido) {
   const pago = p.conjuntoCerrado
     ? 'Pago anticipado (vivo en conjunto cerrado con portería). Espero los datos de pago.'
     : 'Pago: contraentrega (pago al recibir).';
-  const cola = ['', `Total: ${precioTexto(p.total)}`, '', pago, 'Quedo atento(a) a la confirmación'];
+  const personalizados = p.items.filter(i => i.personalizado === true).length;
+  const cola = ['', `Total: ${precioTexto(p.total)}`, '', pago];
+  if (personalizados > 0) cola.push(personalizados === 1 ? 'Te envío mi diseño por este chat.' : 'Te envío mis diseños por este chat.');
+  cola.push('Quedo atento(a) a la confirmación');
 
   const armar = (k) => {
     const mostradas = lineas.slice(0, k);
@@ -120,6 +142,28 @@ function mensajeWhatsApp(pedido) {
     if (m.length <= MAX_MENSAJE) return m;
   }
   return armar(0);
+}
+
+// ---------- Envío de los diseños personalizados por WhatsApp (Web Share con archivos) ----------
+// lineas: [{ id, nombre, files: [File, ...] }] (solo las que tienen archivos); puedeCompartir: (files) => boolean.
+// Devuelve { modo: 'compartir', lotes: [{ ids, files }] } con el menor número de lotes posible (todo junto; si el
+// sistema no lo acepta, una línea por lote; si tampoco, un archivo por lote) o { modo: 'descargar', lotes: [] }.
+function planearEnvioDisenos(lineas, puedeCompartir) {
+  const con = (lineas || []).filter(l => l && Array.isArray(l.files) && l.files.length > 0);
+  if (con.length === 0) return { modo: 'descargar', lotes: [] };
+  const todos = con.flatMap(l => l.files);
+  const ok = (files) => { try { return puedeCompartir(files) === true; } catch (e) { return false; } };
+  if (ok(todos)) return { modo: 'compartir', lotes: [{ ids: con.map(l => l.id), files: todos }] };
+  if (con.every(l => ok(l.files))) return { modo: 'compartir', lotes: con.map(l => ({ ids: [l.id], files: l.files })) };
+  const sueltos = con.flatMap(l => l.files.map(f => ({ ids: [l.id], files: [f] })));
+  if (sueltos.every(l => ok(l.files))) return { modo: 'compartir', lotes: sueltos };
+  return { modo: 'descargar', lotes: [] };
+}
+
+// Texto que acompaña los archivos al compartirlos
+function textoEnvioDisenos(idPedido, nombres) {
+  const lista = (nombres || []).map(n => limpiarTexto(n)).filter(Boolean);
+  return `Pedido ${idPedido}: te envío ${lista.length === 1 ? 'mi diseño' : 'mis diseños'}.` + (lista.length ? ' ' + lista.join('; ') : '');
 }
 
 // Milisegundos que faltan para poder enviar otro pedido (0 = ya se puede)
@@ -157,6 +201,6 @@ async function enviarPedido(pedido, config, fetchFn) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     normalizarCelular, validarCliente, generarIdPedido, calcularTipoPago, crearPedido,
-    mensajeWhatsApp, enviarPedido, esperaRestanteMs, precioTexto, limpiarTexto, MAX_MENSAJE, LIMITES_PEDIDO
+    mensajeWhatsApp, enviarPedido, esperaRestanteMs, itemsDeCarrito, planearEnvioDisenos, textoEnvioDisenos, precioTexto, limpiarTexto, MAX_MENSAJE, LIMITES_PEDIDO
   };
 }

@@ -6,8 +6,91 @@
 // =============================================
 const CART_KEY = 'shopymemes_cart';
 
+// ---------- Productos PERSONALIZADOS (visor del inicio) ----------
+// Viven en el mismo carrito que los normales, pero guardan sus propios datos: no existen en el catálogo.
+// Línea: { id: 'pers-xxxx', personalizado: true, name, price, qty, tipo, color, medida, thumb (JPEG data URL), t }
+const PERS_MAX_LINEAS = 5;     // líneas personalizadas distintas en el carrito
+const PERS_MAX_QTY = 10;       // unidades por línea personalizada
+const PERS_PRECIO_MIN = 1000;
+const PERS_PRECIO_MAX = 500000;
+const PERS_THUMB_MAX = 36000;  // caracteres del data URL (~25 KB de imagen)
+const PERS_TIPOS = ['llavero', 'taza', 'cojin'];
+const PERS_TIPO_ETIQUETA = { llavero: 'Llavero', taza: 'Taza', cojin: 'Cojín' };
+// Colores válidos por tipo (el llavero no tiene color). Debe coincidir con COLORES_PRODUCTO de visor-core.js (hay una prueba).
+const PERS_COLORES = {
+  llavero: {},
+  taza: { blanco: 'Blanco', beige: 'Beige', hueso: 'Hueso', negro: 'Negro', rojo: 'Rojo' },
+  cojin: { blanco: 'Blanco', beige: 'Beige', hueso: 'Hueso', cafe: 'Café', negro: 'Negro' }
+};
+// El nombre SIEMPRE se arma aquí a partir de tipo y color: lo que haya guardado (texto libre) se ignora
+function nombrePersonalizado(tipo, color) {
+  return 'Personalizado: ' + PERS_TIPO_ETIQUETA[tipo] + (color ? ' · ' + PERS_COLORES[tipo][color] : '');
+}
+const PERS_ID_RE = /^pers-[a-z0-9]{6,24}$/;
+const PERS_THUMB_RE = /^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/;
+const PERS_MSG = {
+  max: `Ya tienes ${PERS_MAX_LINEAS} productos personalizados en el carrito. Quita alguno o haz primero ese pedido.`,
+  almacenamiento: 'No pudimos guardar tu diseño en el carrito (el almacenamiento del navegador está lleno o bloqueado). Tu carrito anterior sigue igual; puedes enviarnos el diseño por WhatsApp.',
+  invalido: 'No pudimos añadir ese diseño. Revisa el producto y el precio e intenta de nuevo.'
+};
+
+function esLineaPersonalizada(item) {
+  return !!item && typeof item.id === 'string' && item.personalizado === true;
+}
+
+function limpiarTextoPers(v, max) {
+  return typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max) : '';
+}
+
+// Devuelve la línea saneada o null si no es válida (lo guardado puede estar dañado o editado a mano)
+function normalizarLineaPers(item) {
+  if (!item || item.personalizado !== true || typeof item.id !== 'string' || !PERS_ID_RE.test(item.id)) return null;
+  if (!Number.isInteger(item.qty) || item.qty < 1) return null;
+  if (!PERS_TIPOS.includes(item.tipo)) return null;
+  if (!Number.isInteger(item.price) || item.price < PERS_PRECIO_MIN || item.price > PERS_PRECIO_MAX) return null;
+  // color: null (llavero o sin color) o un color que exista para ese tipo; otra cosa = línea manipulada
+  const color = item.color === null || item.color === undefined ? null : item.color;
+  if (color !== null && !(typeof color === 'string' && Object.prototype.hasOwnProperty.call(PERS_COLORES[item.tipo], color))) return null;
+  if (item.tipo === 'llavero' && color !== null) return null;
+  return {
+    id: item.id,
+    personalizado: true,
+    name: nombrePersonalizado(item.tipo, color),
+    price: item.price,
+    qty: Math.min(item.qty, PERS_MAX_QTY),
+    tipo: item.tipo,
+    color,
+    medida: limpiarTextoPers(item.medida, 60),
+    thumb: typeof item.thumb === 'string' && item.thumb.length <= PERS_THUMB_MAX && PERS_THUMB_RE.test(item.thumb) ? item.thumb : '',
+    t: Number.isFinite(item.t) ? item.t : 0
+  };
+}
+
+function nuevoIdPers(aleatorio) {
+  const alfabeto = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let id = 'pers-';
+  for (let i = 0; i < 10; i++) id += alfabeto[Math.floor(aleatorio() * alfabeto.length) % alfabeto.length];
+  return id;
+}
+
+// Arma una línea personalizada nueva (siempre con id propio) o devuelve null si los datos no son válidos.
+// datos: { tipo, color?, medida?, precio, thumb?, qty? }  (el nombre sale de tipo + color)
+function crearLineaPersonalizada(datos, aleatorio = Math.random, ahora = Date.now()) {
+  const d = datos || {};
+  if (!PERS_TIPOS.includes(d.tipo)) return null;
+  return normalizarLineaPers({
+    id: nuevoIdPers(aleatorio), personalizado: true, price: d.precio, qty: d.qty === undefined ? 1 : d.qty,
+    tipo: d.tipo, color: d.color || null, medida: d.medida || '', thumb: d.thumb || '', t: ahora
+  });
+}
+
+// El id de una línea llega del HTML como texto: 'pers-…' queda igual y los numéricos vuelven a número
+function parseCartId(raw) {
+  return typeof raw === 'string' && raw.startsWith('pers-') ? raw : parseInt(raw);
+}
+
 // Lo guardado en localStorage puede estar dañado o editado a mano: solo se aceptan
-// líneas { id entero, qty entero entre 1 y el máximo }, sin ids repetidos.
+// líneas { id entero, qty entero entre 1 y el máximo } (normales) o personalizadas válidas, sin ids repetidos.
 function getCart() {
   let raw;
   try {
@@ -17,10 +100,22 @@ function getCart() {
   }
   if (!Array.isArray(raw)) return [];
   const seen = new Set();
-  return raw
-    .filter(item => item && Number.isInteger(item.id) && Number.isInteger(item.qty) && item.qty > 0)
-    .filter(item => !seen.has(item.id) && seen.add(item.id))
-    .map(item => ({ id: item.id, qty: Math.min(item.qty, LIMITS.maxCartQty) }));
+  const cart = [];
+  let personalizadas = 0;
+  for (const item of raw) {
+    if (!item) continue;
+    if (item.personalizado === true) {
+      const linea = normalizarLineaPers(item);
+      if (!linea || seen.has(linea.id) || personalizadas >= PERS_MAX_LINEAS) continue;
+      seen.add(linea.id);
+      personalizadas++;
+      cart.push(linea);
+    } else if (Number.isInteger(item.id) && Number.isInteger(item.qty) && item.qty > 0 && !seen.has(item.id)) {
+      seen.add(item.id);
+      cart.push({ id: item.id, qty: Math.min(item.qty, LIMITS.maxCartQty) });
+    }
+  }
+  return cart;
 }
 
 // Producto cargado desde Firestore (products.js), o null si esta página no lo cargó
@@ -30,15 +125,22 @@ function findLoadedProduct(productId) {
 
 // Cuántas unidades se pueden tener en el carrito; si la página no cargó productos, solo el tope general
 function cartLimitFor(productId) {
+  if (typeof productId === 'string') return PERS_MAX_QTY;   // línea personalizada
   const product = findLoadedProduct(productId);
   return product ? maxQtyFor(product) : LIMITS.maxCartQty;
 }
 
 // deferBadge: true cuando una animación va a actualizar el número cuando "aterrice".
 // El carrito se guarda SIEMPRE al instante; solo el número visible del navbar se retrasa.
+// Devuelve false si no se pudo guardar (almacenamiento lleno o bloqueado): el carrito anterior queda intacto.
 function saveCart(cart, { deferBadge = false } = {}) {
-  localStorage.setItem(CART_KEY, JSON.stringify(cart));
+  try {
+    localStorage.setItem(CART_KEY, JSON.stringify(cart));
+  } catch (e) {
+    return false;
+  }
   if (!deferBadge) updateCartBadge();
+  return true;
 }
 
 // Devuelve true si se agregó; false si ya se alcanzó el stock disponible
@@ -65,6 +167,41 @@ function addToCart(productId) {
   return true;
 }
 
+// Añade una línea PERSONALIZADA nueva (cada clic crea una línea propia). Misma animación que los productos normales.
+// Devuelve { ok: true, id } o { ok: false, motivo: 'max' | 'almacenamiento' | 'invalido', mensaje }.
+function addPersonalizedToCart(datos) {
+  const btn = takeClickedAddButton();
+  const falla = (motivo) => {
+    if (btn) showButtonMessage(btn, motivo === 'max' ? 'Máximo alcanzado' : 'No se pudo añadir', 'btn-limit');
+    return { ok: false, motivo, mensaje: PERS_MSG[motivo] };
+  };
+  const cart = getCart();
+  if (cart.filter(esLineaPersonalizada).length >= PERS_MAX_LINEAS) return falla('max');
+  let linea = crearLineaPersonalizada(datos);
+  if (!linea) return falla('invalido');
+  if (!saveCart([...cart, linea], { deferBadge: !!btn })) {
+    // cuota llena: se reintenta sin la miniatura (la línea sigue siendo válida)
+    linea = Object.assign({}, linea, { thumb: '' });
+    if (!saveCart([...cart, linea], { deferBadge: !!btn })) return falla('almacenamiento');
+  }
+  if (btn) playAddAnimation(btn);
+  return { ok: true, id: linea.id };
+}
+
+// Reprecia las líneas personalizadas con los precios de la config del admin (por tipo). precios: { llavero, taza, cojin }
+// ya validados (preciosDeConfig). Devuelve { cart, cambios: [{ id, tipo, antes, despues }] }; no toca las líneas normales.
+function repreciarPersonalizadas(cart, precios) {
+  const cambios = [];
+  const nuevo = cart.map(l => {
+    if (!esLineaPersonalizada(l)) return l;
+    const p = precios && precios[l.tipo];
+    if (!Number.isInteger(p) || p < PERS_PRECIO_MIN || p > PERS_PRECIO_MAX || p === l.price) return l;
+    cambios.push({ id: l.id, tipo: l.tipo, antes: l.price, despues: p });
+    return Object.assign({}, l, { price: p });
+  });
+  return { cart: nuevo, cambios };
+}
+
 function getCartCount() {
   return getCart().reduce((total, item) => total + item.qty, 0);
 }
@@ -85,8 +222,7 @@ function changeQty(productId, delta) {
   if (!item) return false;
   if (delta > 0 && item.qty + delta > cartLimitFor(productId)) return false;
   item.qty += delta;
-  saveCart(cart.filter(i => i.qty > 0));
-  return true;
+  return saveCart(cart.filter(i => i.qty > 0));
 }
 
 // Ajusta el carrito al stock actual (p. ej. si el admin bajó el stock después de agregar)
@@ -97,6 +233,7 @@ function syncCartWithStock() {
   const cart = [];
   const current = getCart();
   for (const item of current) {
+    if (esLineaPersonalizada(item)) { cart.push(item); continue; }   // no existen en el catálogo: no hay stock que revisar
     const product = findLoadedProduct(item.id);
     if (!product) continue;
     const max = maxQtyFor(product);
@@ -131,7 +268,7 @@ function clearCart() {
 // addToCart lo lee enseguida; si pasaron más de 150 ms se ignora.
 let lastAddClick = null;
 document.addEventListener('click', (e) => {
-  const btn = e.target.closest ? e.target.closest('button[data-id], #addToCartBtn') : null;
+  const btn = e.target.closest ? e.target.closest('button[data-id], #addToCartBtn, #visorAnadir') : null;
   lastAddClick = btn ? { btn, time: performance.now() } : null;
 }, true);
 
@@ -205,8 +342,9 @@ function getCartTarget() {
   return badge ? (badge.closest('a, button') || badge) : null;
 }
 
-// Foto del producto para la bolita: la de su tarjeta, o la grande de product.html
+// Foto del producto para la bolita: la de su tarjeta, la grande de product.html o la miniatura del diseño
 function findFlyImageSrc(btn) {
+  if (btn.dataset && btn.dataset.flySrc) return btn.dataset.flySrc;   // el visor pone la miniatura de su diseño
   const card = btn.closest('.product-card');
   const img = (card && card.querySelector('img')) || document.getElementById('mainImage');
   return img ? (img.currentSrc || img.src) : null;

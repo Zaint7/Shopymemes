@@ -68,14 +68,28 @@ service cloud.firestore {
     }
 
     // Colores disponibles del visor de personalización (los ids deben coincidir con COLORES_POR_TIPO en
-    // Public/visor-core.js; npm test lo verifica). Una lista de 1 a 5 colores por tipo, sin otros campos.
+    // Public/visor-core.js; npm test lo verifica). Una lista de 1 a 5 colores por tipo; además `precios` (llavero, taza, cojin).
     function validColoresTipo(lista, permitidos) {
       return lista is list && lista.size() >= 1 && lista.size() <= 5 && lista.hasOnly(permitidos);
     }
 
+    // Precio en pesos colombianos por tipo (enteros de 1.000 a 500.000; los mismos límites que PRECIO_MIN/PRECIO_MAX
+    // de Public/visor-core.js). OBLIGATORIO al guardar desde el admin.
+    function validPrecio(n) {
+      return n is int && n >= 1000 && n <= 500000;
+    }
+
+    function validPrecios(p) {
+      return p is map
+        && p.keys().hasOnly(['llavero', 'taza', 'cojin'])
+        && p.keys().hasAll(['llavero', 'taza', 'cojin'])
+        && validPrecio(p.llavero) && validPrecio(p.taza) && validPrecio(p.cojin);
+    }
+
     function validVisorConfig(d) {
-      return d.keys().hasOnly(['colores', 'actualizado'])
-        && d.keys().hasAll(['colores', 'actualizado'])
+      return d.keys().hasOnly(['colores', 'precios', 'actualizado'])
+        && d.keys().hasAll(['colores', 'precios', 'actualizado'])
+        && validPrecios(d.precios)
         && d.actualizado == request.time
         && d.colores is map
         && d.colores.keys().hasOnly(['taza', 'cojin'])

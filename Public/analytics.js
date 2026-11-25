@@ -37,6 +37,7 @@
     '.cc-banner button{min-height:48px;min-width:112px;padding:0 18px;border-radius:999px;font:inherit;font-weight:700;cursor:pointer;border:2px solid #fff;background:transparent;color:#fff}' +
     '.cc-banner .cc-aceptar{background:#d4ff00;border-color:#d4ff00;color:#212529}' +
     '.cc-banner button:focus-visible{outline:3px solid #fff;outline-offset:2px}' +
+    'body:has(>.cc-banner){padding-bottom:190px}@media(min-width:768px){body:has(>.cc-banner){padding-bottom:100px}}' +
     'body.cart-bar-visible .cc-banner{bottom:76px}@media(min-width:992px){body.cart-bar-visible .cc-banner{bottom:0}}';
 
   function mostrarBanner(w, id) {

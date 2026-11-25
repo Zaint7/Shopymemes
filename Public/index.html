@@ -16,11 +16,11 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <script src="shared.js?v=12"></script>
   <script src="products.js?v=4"></script>
-  <script src="cart.js"></script>
+  <script src="cart.js?v=3"></script>
   <script src="layout.js"></script>
-  <link rel="stylesheet" href="style.css?v=11">
+  <link rel="stylesheet" href="style.css?v=13">
   <script src="analytics-config.js?v=2"></script>
-  <script src="analytics.js?v=1" defer></script>
+  <script src="analytics.js?v=2" defer></script>
   <script src="animaciones.js?v=2" defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -49,30 +49,92 @@
 <div class="rainbow-divider" aria-hidden="true"></div>
 
 <!-- ======================================================= -->
-<!-- PERSONALIZA: visor de prueba (seccion-personaliza.js lo   -->
-<!-- inicia solo cuando la sección entra en pantalla)          -->
+<!-- PERSONALIZA: visor completo en la home. Todo el HTML ya está -->
+<!-- aquí (sin saltos de diseño); visor-loader.js trae los scripts  -->
+<!-- cuando la sección está cerca de la pantalla y visor-app.js lo   -->
+<!-- activa. Cambiar de producto no recarga la página.               -->
 <!-- ======================================================= -->
-<section class="personaliza-seccion" id="personaliza" aria-labelledby="personalizaTitulo">
+<section class="personaliza-seccion" id="personaliza" aria-labelledby="personalizaTitulo" aria-busy="true">
   <div class="container">
-    <div class="row align-items-center g-4">
-      <div class="col-12 col-lg-6 text-center text-lg-start">
-        <h2 class="personaliza-titulo" id="personalizaTitulo">PERSONALIZA TU PRODUCTO Y VISUALÍZALO</h2>
-        <p class="personaliza-subtitulo">Sube tu foto y mira cómo queda en una taza, un cojín o un llavero antes de pedirlo.</p>
-        <div class="personaliza-tabs" role="group" aria-label="Tipo de producto">
-          <button type="button" class="btn btn-outline-dark rounded-pill personaliza-tab" data-tipo="llavero" aria-pressed="true">Llavero</button>
-          <button type="button" class="btn btn-outline-dark rounded-pill personaliza-tab" data-tipo="taza" aria-pressed="false">Taza</button>
-          <button type="button" class="btn btn-outline-dark rounded-pill personaliza-tab" data-tipo="cojin" aria-pressed="false">Cojín</button>
-        </div>
-        <div class="d-flex flex-wrap gap-2 justify-content-center justify-content-lg-start">
-          <button type="button" class="btn btn-dark rounded-pill px-4" id="personalizaSubir">Prueba con tu foto</button>
-          <a class="btn btn-outline-dark rounded-pill px-4" id="personalizaAbrir" href="personalizar.html?tipo=llavero">Abrir el visor completo</a>
-        </div>
-        <input type="file" id="personalizaArchivo" accept="image/jpeg,image/png,image/webp" class="d-none" aria-label="Elegir una foto">
-        <p class="personaliza-estado" id="personalizaEstado" role="status" aria-live="polite"></p>
+    <div class="text-center mb-4">
+      <h2 class="personaliza-titulo" id="personalizaTitulo">PERSONALIZA TU PRODUCTO Y VISUALÍZALO</h2>
+      <p class="personaliza-subtitulo mx-auto">Sube tu foto y mira cómo queda en una taza, un cojín o un llavero antes de pedirlo.</p>
+      <div class="personaliza-tabs justify-content-center" role="group" aria-label="Tipo de producto" id="visorTipos">
+        <button type="button" class="btn btn-outline-dark rounded-pill personaliza-tab" data-tipo="llavero" aria-pressed="true">Llavero</button>
+        <button type="button" class="btn btn-outline-dark rounded-pill personaliza-tab" data-tipo="taza" aria-pressed="false">Taza</button>
+        <button type="button" class="btn btn-outline-dark rounded-pill personaliza-tab" data-tipo="cojin" aria-pressed="false">Cojín</button>
       </div>
-      <div class="col-12 col-lg-6">
-        <div class="personaliza-escena" id="personalizaEscena">
-          <canvas id="personalizaCanvas" class="personaliza-canvas" width="600" height="600" role="img" aria-label="Vista previa del producto personalizado"></canvas>
+    </div>
+
+    <noscript><p class="text-center fw-semibold">Activa JavaScript para usar el visor de personalización.</p></noscript>
+    <div class="text-center fw-semibold text-danger d-none" id="visorFallo" role="alert"><p class="mb-2">No se pudo cargar el visor. Revisa tu conexión o escríbenos por WhatsApp para personalizar tu pedido.</p><button type="button" class="btn btn-outline-dark rounded-pill" id="visorReintentar">Reintentar</button></div>
+
+    <div class="visor-app" id="visorApp">
+      <div class="row g-4 align-items-start">
+        <div class="col-12 col-lg-7">
+          <div class="visor-lienzo-wrap">
+            <canvas id="visorCanvas" class="visor-lienzo" width="600" height="600"
+              role="img" aria-label="Vista previa de tu diseño. Arrastra para mover la foto y pellizca para hacer zoom."></canvas>
+          </div>
+          <p class="product-medida product-detail-medida mt-2" id="visorMedida"><svg class="product-medida-icono" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="1.5" y="5" width="13" height="6" rx="1"/><path d="M4.5 5v2.5M7 5v3.5M9.5 5v2.5M12 5v3.5"/></svg><span id="visorMedidaTexto">Tamaño: 4 cm x 4 cm</span></p>
+        </div>
+
+        <div class="col-12 col-lg-5 visor-panel">
+          <div class="mb-3">
+            <input type="file" id="visorArchivo" accept="image/*" class="visually-hidden" tabindex="-1">
+            <button type="button" class="btn btn-dark btn-lg rounded-pill px-4" id="visorSubir">Subir foto</button>
+            <p class="small text-muted mt-2 mb-0">Tu foto se queda en tu dispositivo: no se envía a ningún servidor.</p>
+            <p class="small text-muted mt-1 mb-0" id="visorCargando">Preparando el visor...</p>
+          </div>
+
+          <fieldset class="mb-3">
+            <legend class="visor-etiqueta">Modo</legend>
+            <div class="btn-group" role="group" aria-label="Modo de la foto">
+              <input type="radio" class="btn-check" name="visorModo" id="visorModoCompleta" value="completa" checked>
+              <label class="btn btn-outline-dark" for="visorModoCompleta">Foto completa</label>
+              <input type="radio" class="btn-check" name="visorModo" id="visorModoRecorte" value="recorte" disabled>
+              <label class="btn btn-outline-dark" for="visorModoRecorte">Recortar sujeto</label>
+            </div>
+          </fieldset>
+
+          <div class="mb-3">
+            <span class="visor-etiqueta d-block">Ajustar foto</span>
+            <div class="visor-controles" role="group" aria-label="Ajustar foto">
+              <button type="button" class="btn btn-outline-dark visor-ajuste" data-accion="zoom-out" aria-label="Alejar" disabled>&minus;</button>
+              <button type="button" class="btn btn-outline-dark visor-ajuste" data-accion="zoom-in" aria-label="Acercar" disabled>+</button>
+              <button type="button" class="btn btn-outline-dark visor-ajuste" data-accion="rot-izq" aria-label="Girar a la izquierda" disabled>&#10226;</button>
+              <button type="button" class="btn btn-outline-dark visor-ajuste" data-accion="rot-der" aria-label="Girar a la derecha" disabled>&#10227;</button>
+            </div>
+          </div>
+
+          <!-- Color del producto: solo taza y cojín (visor-app.js lo muestra y crea las muestras) -->
+          <div class="mb-3 d-none" id="visorColorWrap">
+            <span class="visor-etiqueta d-block" id="visorColorTitulo">Color del producto: <span class="visor-color-nombre" id="visorColorNombre">Blanco</span></span>
+            <div class="visor-colores" id="visorColores" role="radiogroup" aria-labelledby="visorColorTitulo"></div>
+            <p class="small text-muted mt-2 mb-0 d-none" id="visorColorAviso">En colores oscuros la estampa se imprime sobre base blanca.</p>
+          </div>
+
+          <div class="mb-3 d-none" id="visorProgresoWrap">
+            <p class="small mb-1" id="visorProgresoTexto">Descargando el modelo de recorte...</p>
+            <div class="progress" role="progressbar" aria-label="Descarga del modelo de recorte" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <div class="progress-bar bg-dark" id="visorProgreso" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <p class="visor-estado" id="visorEstado" role="status" aria-live="polite"></p>
+
+          <div class="visor-acciones">
+            <button type="button" class="btn btn-lg rounded-pill px-4 visor-solicitar" id="visorAnadir" disabled aria-describedby="visorSolicitarAyuda visorSolicitarPrivacidad">Añadir al carrito</button>
+            <button type="button" class="btn btn-link btn-sm px-0 d-none" id="visorPrecioReintentar">No pudimos cargar el precio. Reintentar</button>
+            <p class="small text-muted mb-0" id="visorSolicitarAyuda">Sube una foto para poder añadir tu diseño al carrito.</p>
+            <p class="visor-nota-wa" id="visorAnadirNota" role="status" aria-live="polite"></p>
+            <button type="button" class="btn btn-outline-dark btn-lg rounded-pill px-4" id="visorSolicitar" disabled aria-describedby="visorSolicitarAyuda visorSolicitarPrivacidad">Consultar por WhatsApp</button>
+            <p class="small text-muted mb-0" id="visorSolicitarPrivacidad">Tu foto no se sube a ningún servidor: solo se envía si tú la adjuntas en WhatsApp.</p>
+            <p class="visor-nota-wa" id="visorSolicitarNota" role="status" aria-live="polite"></p>
+            <button type="button" class="btn btn-link btn-sm px-0" id="visorDescargar" disabled>Descargar diseño + foto</button>
+            <p class="small text-muted mb-0 d-none" id="visorArteAyuda"></p>
+            <p class="visor-nota-wa" id="visorDescargaNota" role="status" aria-live="polite"></p>
+          </div>
         </div>
       </div>
     </div>
@@ -174,11 +236,8 @@
 <div id="footer-placeholder"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<!-- visor-core.js va antes que visor.js (lo usa como global) -->
-<script src="visor-core.js?v=7"></script>
-<script src="visor.js?v=8"></script>
-<script src="foto-archivo.js?v=1"></script>
-<script src="seccion-personaliza.js?v=2"></script>
+<!-- El visor (visor-core, visor, recorte, visor-app) se carga solo cuando la sección está cerca de la pantalla -->
+<script src="visor-loader.js?v=5"></script>
 
 <!-- ============================================= -->
 <!-- SCRIPT: renderizado y lógica del grid de productos -->
@@ -297,12 +356,12 @@
 </script>
 
 <script>
-  // En búsquedas y categorías la sección está oculta: no se inicia el visor.
+  // En búsquedas y categorías la sección está oculta y el visor no se carga.
   // Misma condición que usa hideHeroSection (valores vacíos incluidos: ?search= no oculta nada)
   if (esVistaFiltrada()) {
     document.getElementById('personaliza').classList.add('d-none'); // también si los productos fallan al cargar
   } else {
-    iniciarSeccionPersonaliza(document.getElementById('personaliza'));
+    iniciarVisorPerezoso(document.getElementById('personaliza'));
   }
 </script>
 

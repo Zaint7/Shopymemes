@@ -712,3 +712,25 @@ test('el código no usa caracteres combinantes literales en la expresión de ace
   assert.ok(codigo.includes('/[\\u0300-\\u036f]/g'));
   assert.ok(!/[\u0300-\u036f]/.test(codigo));
 });
+
+test('un pedido con productos personalizados (emoji, medida y "(diseño por WhatsApp)") pasa SIN cambiar el script: total recalculado y columna Productos legible', () => {
+  const { itemsDeCarrito, crearPedido } = require('../Public/pedido.js');
+  const lineas = [
+    { product: { name: 'Llavero Meme', price: 12000 }, qty: 2 },
+    { product: { name: 'Personalizado: Cojín · Blanco', price: 50000, medida: '30 cm x 30 cm' }, qty: 2, personalizado: true },
+    { product: { name: 'Personalizado: Taza · Rojo', price: 40000, medida: 'pocillo estándar' }, qty: 1, personalizado: true }
+  ];
+  const p = crearPedido({ nombre: 'Ana Pérez', celular: '3001234567', ciudad: 'Bogotá', direccion: 'Calle 10 # 5-20', referencias: '', conjuntoCerrado: false, acepto: true }, itemsDeCarrito(lineas), new Date('2026-11-22T15:30:00Z'), () => 0);
+  const env = crearEntorno();
+  assert.equal(post(env, JSON.parse(JSON.stringify(p))), 'ok');
+  assert.equal(env.filas.length, 1);
+  const f = env.filas[0];
+  assert.equal(f[10], 2 * 12000 + 2 * 50000 + 40000, 'total recalculado en el servidor');
+  assert.equal(f[9], '2x Llavero Meme; 2x 🎨 Personalizado: Cojín · Blanco (30 cm x 30 cm) (diseño por WhatsApp); 1x 🎨 Personalizado: Taza · Rojo (pocillo estándar) (diseño por WhatsApp)');
+  assert.ok(f[9].length < 500);
+  // 5 líneas personalizadas + normales: dentro de los límites del script
+  const mucho = [];
+  for (let i = 0; i < 5; i++) mucho.push({ product: { name: 'Personalizado: Cojín · Blanco', price: 50000, medida: '30 cm x 30 cm' }, qty: 10, personalizado: true });
+  const p2 = crearPedido({ nombre: 'Ana Pérez', celular: '3001234567', ciudad: 'Bogotá', direccion: 'Calle 10 # 5-20', referencias: '', conjuntoCerrado: false, acepto: true }, itemsDeCarrito(mucho), new Date('2026-11-22T15:31:00Z'), () => 0.5);
+  assert.equal(post(env, JSON.parse(JSON.stringify(p2))), 'ok');
+});

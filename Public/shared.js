@@ -68,7 +68,7 @@ function isValidUpdatedAt(v) {
 const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 // Recibe los valores tal cual vienen del formulario (strings) y devuelve { product } o { error }
-// Tipos del visor de personalización (personalizar.html?tipo=...). Ya no van ligados a los productos;
+// Tipos del visor de personalización (index.html?tipo=...#personaliza). Ya no van ligados a los productos;
 // firestore.rules aún acepta los campos opcionales viejos, sin uso.
 const PERSONALIZACION_TIPOS = Object.freeze(['taza', 'cojin', 'llavero']);
 

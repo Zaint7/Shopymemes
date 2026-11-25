@@ -370,3 +370,111 @@ test('mensajeSolicitudPersonalizada: incluye la línea de tamaño cuando se pasa
   assert.ok(!mensajeSolicitudPersonalizada('llavero', null).includes('Tamaño'));
   assert.ok(!mensajeSolicitudPersonalizada('llavero', null, undefined, 'a\nb<>').includes('<>'), 'texto raro: una sola línea limpia o nada');
 });
+
+// ---------- Precios por tipo (config/visor.precios) ----------
+const { PRECIOS_POR_DEFECTO, PRECIO_MIN, PRECIO_MAX, precioValido, precioCOP, validarPrecios, preciosDeConfig, MEDIDA_CORTA } = require('../Public/visor-core.js');
+
+test('precios: por defecto 40000 para llavero, taza y cojín; cotas $1.000 a $500.000', () => {
+  assert.deepEqual({ ...PRECIOS_POR_DEFECTO }, { llavero: 40000, taza: 40000, cojin: 40000 });
+  assert.equal(PRECIO_MIN, 1000);
+  assert.equal(PRECIO_MAX, 500000);
+  assert.ok(Object.isFrozen(PRECIOS_POR_DEFECTO));
+});
+
+test('precioValido: solo enteros (number) dentro de las cotas', () => {
+  for (const ok of [1000, 40000, 500000]) assert.equal(precioValido(ok), true, String(ok));
+  for (const mal of [999, 500001, 0, -5, 40000.5, NaN, Infinity, '40000', null, undefined, {}, [], true]) assert.equal(precioValido(mal), false, String(mal));
+});
+
+test('validarPrecios: exige los 3 tipos y da mensajes en español', () => {
+  assert.equal(validarPrecios({ llavero: 40000, taza: 45000, cojin: 50000 }).ok, true);
+  const r = validarPrecios({ llavero: 40000, taza: 100, cojin: 50000 });
+  assert.equal(r.ok, false);
+  assert.equal(r.error, 'El precio de la taza debe ser un número entero entre $1.000 y $500.000.');
+  assert.match(validarPrecios({ llavero: 40000, taza: 40000 }).error, /cojín/);
+  for (const malo of [null, undefined, 'x', 5, [], { llavero: 1 }]) assert.equal(validarPrecios(malo).ok, false);
+});
+
+test('preciosDeConfig: tolera null, sin precios y valores raros (cae al por defecto tipo por tipo)', () => {
+  const def = { llavero: 40000, taza: 40000, cojin: 40000 };
+  for (const malo of [null, undefined, 5, 'x', {}, { precios: null }, { precios: 'x' }, { precios: [] }, { colores: {} }]) assert.deepEqual(preciosDeConfig(malo), def, JSON.stringify(malo));
+  assert.deepEqual(preciosDeConfig({ precios: { llavero: 30000, taza: 'mucho', cojin: 999999 } }), { llavero: 30000, taza: 40000, cojin: 40000 });
+  assert.deepEqual(preciosDeConfig({ precios: { __proto__: { taza: 12345 } } }), def, 'no hereda claves');
+});
+
+test('precioCOP: formato con puntos de miles sin depender de ICU', () => {
+  assert.equal(precioCOP(40000), '$40.000');
+  assert.equal(precioCOP(500000), '$500.000');
+  assert.equal(precioCOP(1000), '$1.000');
+  assert.equal(precioCOP('x'), '$0');
+});
+
+test('parsearConfigVisorRest: lee precios (integerValue como cadena); sin precios o con basura -> por defecto', () => {
+  const base = { colores: { mapValue: { fields: { taza: { arrayValue: { values: [{ stringValue: 'rojo' }] } } } } } };
+  const con = parsearConfigVisorRest({ fields: { ...base, precios: { mapValue: { fields: { llavero: { integerValue: '35000' }, taza: { integerValue: '45000' }, cojin: { integerValue: '12' } } } } } });
+  assert.deepEqual({ ...con.precios }, { llavero: 35000, taza: 45000, cojin: 40000 });
+  assert.deepEqual({ ...parsearConfigVisorRest({ fields: base }).precios }, { llavero: 40000, taza: 40000, cojin: 40000 }, 'documento viejo sin precios');
+  assert.deepEqual({ ...parsearConfigVisorRest({ fields: { ...base, precios: { stringValue: 'x' } } }).precios }, { llavero: 40000, taza: 40000, cojin: 40000 });
+});
+
+test('MEDIDA_CORTA: texto breve por tipo', () => {
+  assert.deepEqual({ ...MEDIDA_CORTA }, { llavero: '4 cm x 4 cm', taza: 'pocillo estándar', cojin: '30 cm x 30 cm' });
+});
+
+// ---------- Lectura de la config: resultados posibles ----------
+const { resultadoConfigRest, configEnCache, cargarConfigVisor, construirUrlVisor, CLAVE_CONFIG } = require('../Public/visor-core.js');
+
+const docRest = { fields: { colores: { mapValue: { fields: { taza: { arrayValue: { values: [{ stringValue: 'rojo' }] } } } } }, precios: { mapValue: { fields: { llavero: { integerValue: '35000' }, taza: { integerValue: '45000' }, cojin: { integerValue: '50000' } } } } } };
+const almacen = (inicial) => { const m = new Map(inicial ? [[CLAVE_CONFIG, inicial]] : []); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, v), m }; };
+const respuesta = (status, json, jsonFalla) => ({ status, ok: status >= 200 && status < 300, json: async () => { if (jsonFalla) throw new Error('no es json'); return json; } });
+
+test('resultadoConfigRest: solo 404 = sin documento (valores por defecto); 500, 403 o JSON raro = error', () => {
+  assert.deepEqual({ ...resultadoConfigRest(404, null) }, { estado: 'sin-documento', config: null });
+  assert.equal(resultadoConfigRest(200, docRest).estado, 'ok');
+  assert.equal(resultadoConfigRest(200, docRest).config.precios.taza, 45000);
+  for (const [st, j] of [[500, null], [503, {}], [403, {}], [401, {}], [0, null], [200, {}], [200, null], [200, 'x'], [200, { fields: {} }]]) {
+    assert.equal(resultadoConfigRest(st, j).estado, 'error', `${st} ${JSON.stringify(j)}`);
+  }
+});
+
+test('cargarConfigVisor: ok, 404, error de red, tiempo agotado, 500 y JSON roto', async () => {
+  const ok = await cargarConfigVisor({ fetch: async () => respuesta(200, docRest), storage: almacen() });
+  assert.equal(ok.estado, 'ok');
+  assert.equal(ok.config.precios.cojin, 50000);
+  const nodoc = await cargarConfigVisor({ fetch: async () => respuesta(404), storage: almacen() });
+  assert.equal(nodoc.estado, 'sin-documento');
+  for (const f of [async () => { throw new TypeError('Failed to fetch'); }, async () => respuesta(500), async () => respuesta(200, null, true), async () => respuesta(200, { fields: {} })]) {
+    assert.equal((await cargarConfigVisor({ fetch: f, storage: almacen() })).estado, 'error');
+  }
+  // tiempo agotado: el fetch respeta la señal de aborto
+  const lento = (url, { signal }) => new Promise((_, rechazar) => signal.addEventListener('abort', () => rechazar(Object.assign(new Error('abort'), { name: 'AbortError' }))));
+  const t0 = Date.now();
+  assert.equal((await cargarConfigVisor({ fetch: lento, storage: almacen() })).estado, 'error');
+  assert.ok(Date.now() - t0 >= 2500 && Date.now() - t0 < 5000, 'espera ~3 s');
+});
+
+test('cargarConfigVisor: guarda ok y sin-documento en caché 10 min; un error NO se guarda; la caché válida se usa aunque falle la red', async () => {
+  const st = almacen();
+  await cargarConfigVisor({ fetch: async () => respuesta(200, docRest), storage: st, ahora: () => 1000 });
+  assert.ok(st.m.has(CLAVE_CONFIG));
+  const desdeCache = await cargarConfigVisor({ fetch: async () => { throw new Error('sin red'); }, storage: st, ahora: () => 1000 + 9 * 60 * 1000 });
+  assert.equal(desdeCache.estado, 'ok', 'caché de menos de 10 min');
+  assert.equal(desdeCache.config.precios.taza, 45000);
+  const vencida = await cargarConfigVisor({ fetch: async () => { throw new Error('sin red'); }, storage: st, ahora: () => 1000 + 11 * 60 * 1000 });
+  assert.equal(vencida.estado, 'error', 'caché vencida y sin red = error (no se inventa un precio)');
+  const st2 = almacen();
+  await cargarConfigVisor({ fetch: async () => respuesta(500), storage: st2 });
+  assert.equal(st2.m.size, 0, 'un error no se cachea');
+  const st3 = almacen();
+  await cargarConfigVisor({ fetch: async () => respuesta(404), storage: st3, ahora: () => 5 });
+  assert.equal(configEnCache(st3, 6).estado, 'sin-documento');
+  assert.equal(configEnCache(almacen('no es json'), 1), null);
+  assert.equal(configEnCache(almacen(JSON.stringify({ t: 10, c: 'basura' })), 11), null);
+});
+
+test('construirUrlVisor: conserva utm/fbclid y el hash; blanco o sin color no escribe color', () => {
+  assert.equal(construirUrlVisor('/index.html', '?utm_source=ig&fbclid=ABC', '#promo', 'taza', 'rojo'), '/index.html?utm_source=ig&fbclid=ABC&tipo=taza&color=rojo#promo');
+  assert.equal(construirUrlVisor('/', '?tipo=taza&color=rojo&utm_source=ig', '#personaliza', 'llavero', null), '/?tipo=llavero&utm_source=ig#personaliza');
+  assert.equal(construirUrlVisor('/', '?color=rojo', '', 'cojin', 'blanco'), '/?tipo=cojin');
+  assert.equal(construirUrlVisor('/', '', '', 'taza', 'negro'), '/?tipo=taza&color=negro');
+});
